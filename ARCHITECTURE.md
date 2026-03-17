@@ -183,37 +183,54 @@ project/
 
 ---
 
-## Phase 3 — Kafka 파이프라인 (1~2개월)
+## Phase 3 — Kafka 파이프라인 (완료 ✅)
 
 ### 목표
 데이터 수집 → 분석 → 저장 → 알림을 완전히 비동기 파이프라인으로 분리.
-현재 `services/api/services/pipeline.py` 안에 순차 실행되는 로직을 각 서비스로 분리.
+`services/api/services/pipeline.py` 안에 순차 실행되던 로직을 각 서비스로 분리.
 
 ### Kafka Topic 설계
 ```
-stock.raw.us        미국 주가 원시 데이터 (yfinance)
-stock.raw.kr        한국 주가 원시 데이터 (pykrx)
-anomaly.detected    이상값 감지 결과
-news.fetched        뉴스 수집 완료 이벤트
-analysis.completed  AI 분석 완료 결과
-notification.queue  알림 발송 큐 (슬랙/이메일)
+stock.raw.us        미국 주가 배치 데이터 (yfinance) — key: "batch"
+stock.raw.kr        한국 주가 배치 데이터 (pykrx)    — key: "batch"
+anomaly.detected    이상값 감지 결과                 — key: ticker
+news.fetched        뉴스 수집 완료 이벤트             — key: ticker
+analysis.completed  AI 분석 완료 결과                — key: ticker
 ```
 
 ### 서비스별 Kafka 흐름
 ```
-[stock-collector]   →  stock.raw.us / stock.raw.kr 에 발행
-[anomaly-detector]  ←  stock.raw 구독  →  anomaly.detected 발행
+[stock-collector]   →  stock.raw.us / stock.raw.kr 에 발행 (1회 실행 후 종료)
+[anomaly-detector]  ←  stock.raw.* 구독  →  anomaly.detected 발행
 [news-fetcher]      ←  anomaly.detected 구독  →  news.fetched 발행
 [ai-analyzer]       ←  news.fetched 구독  →  analysis.completed 발행
 [api (db-writer)]   ←  analysis.completed 구독  →  DB 저장 + WS 브로드캐스트
-[notifier]          ←  analysis.completed 구독  →  슬랙/이메일 발송
+[notifier]          ←  analysis.completed 구독  →  Slack 알림 발송
 ```
 
-### Phase 3 완료 기준
-- [ ] Kafka + Zookeeper 컨테이너 실행 (`docker-compose.yml` 주석 해제)
-- [ ] 각 서비스 `main.py` Kafka Consumer/Producer 구현
-- [ ] `confluentinc/confluent-kafka` Python 패키지 추가
-- [ ] 장애 시나리오 테스트 (AI 서비스 중단 → 나머지 정상 동작)
+### 메시지 스키마
+| Topic | 주요 필드 |
+|-------|-----------|
+| `stock.raw.*` | `market, timestamp, stocks: {ticker: {date: {OHLCV}}}` |
+| `anomaly.detected` | `ticker, date, return_pct, zscore, direction, event_type, sector, ...` |
+| `news.fetched` | anomaly 필드 + `news_en[], news_kr[], news_text` |
+| `analysis.completed` | news 필드 - news_text + `analysis_ko, analysis_en` |
+
+### 구현 완료 항목
+- [x] Kafka + Zookeeper 컨테이너 (`docker-compose.yml` 활성화)
+- [x] `stock-collector/main.py` — yfinance/pykrx → Kafka 배치 발행
+- [x] `anomaly-detector/main.py` — stock.raw.* 구독 → 탐지+분류 → anomaly.detected
+- [x] `news-fetcher/main.py` — anomaly.detected 구독 → 뉴스 수집 → news.fetched
+- [x] `ai-analyzer/main.py` — news.fetched 구독 → Gemini 분석 → analysis.completed
+- [x] `notifier/main.py` — analysis.completed 구독 → Slack Webhook 발송
+- [x] `api/main.py` — analysis.completed 구독 → DB 저장 + WebSocket 브로드캐스트
+- [x] `requirements.txt`에 `confluent-kafka>=2.4.0` 추가
+- [x] API는 Kafka 없을 때 APScheduler pipeline.py fallback 유지 (하위 호환)
+
+### 장애 격리 특성
+- **ai-analyzer 중단** → news-fetcher, anomaly-detector, stock-collector 정상 동작 (메시지 큐에 쌓임)
+- **api 중단** → 파이프라인 계속 처리, api 재시작 후 큐에서 이어서 소비
+- **notifier 중단** → DB 저장 + WS 브로드캐스트는 api가 독립 처리
 
 ---
 
@@ -378,5 +395,5 @@ WS   /ws/live
 |------|------|-----------|
 | Phase 1 (FastAPI + DB) | ✅ 완료 | 결과가 DB에 쌓이고 API로 조회 가능 |
 | Phase 2 (Frontend)     | ✅ 완료 | 시각적 대시보드, 실시간 알림 |
-| Phase 3 (Kafka)        | 스텁 준비 완료 | 안정적인 파이프라인, 확장성 확보 |
+| Phase 3 (Kafka)        | ✅ 완료        | 안정적인 파이프라인, 확장성 확보 |
 | Phase 4 (K8s)          | 미착수 | 프로덕션 수준 운영, 자동 스케일링 |

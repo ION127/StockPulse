@@ -19,3 +19,6 @@ apscheduler>=3.10.0
 # ── DB (TimescaleDB / PostgreSQL 비동기) ──────
 sqlalchemy[asyncio]>=2.0.0
 asyncpg>=0.29.0
+
+# ── Phase 3: Kafka 파이프라인 ─────────────────
+confluent-kafka>=2.4.0

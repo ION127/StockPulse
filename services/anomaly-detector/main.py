@@ -1,50 +1,150 @@
 """
-Anomaly Detector 서비스 — Phase 3 (Kafka 연동 예정)
+Anomaly Detector 서비스 — Phase 3
 
-현재: stub (Phase 3에서 구현)
-Phase 3 역할:
+역할:
   - Kafka Topic 'stock.raw.us', 'stock.raw.kr' 구독
   - Z-score + % 임계값으로 이상값 탐지
-  - 이벤트 유형 분류 (INDIVIDUAL / SECTOR / MARKET)
-  - Kafka Topic 'anomaly.detected'에 발행
+  - 이벤트 유형 자동 분류 (INDIVIDUAL / SECTOR / MARKET)
+  - Kafka Topic 'anomaly.detected'에 이상값별로 발행
 
-환경변수:
-  - KAFKA_BOOTSTRAP_SERVERS
-  - ANOMALY_THRESHOLD_PERCENT (기본 8.0)
-  - ANOMALY_ZSCORE_THRESHOLD (기본 3.0)
+메시지 형식 (anomaly.detected):
+  key   : ticker
+  value : {
+      ticker, date, return_pct, zscore, close_price, volume,
+      direction, event_type, sector,
+      sector_peer_count, moving_sector_count, is_recent
+  }
 """
 
-import os
+import json
 import logging
+import os
+import signal
+import sys
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import pandas as pd
+from confluent_kafka import Consumer, KafkaError, Producer
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
+logger = logging.getLogger("anomaly-detector")
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 THRESHOLD_PCT = float(os.getenv("ANOMALY_THRESHOLD_PERCENT", "8.0"))
 THRESHOLD_Z = float(os.getenv("ANOMALY_ZSCORE_THRESHOLD", "3.0"))
+GROUP_ID = "anomaly-detector-group"
+
+_running = True
+
+
+def _handle_signal(sig, frame):
+    global _running
+    logger.info("종료 신호 수신 — 루프 종료 중")
+    _running = False
+
+
+signal.signal(signal.SIGTERM, _handle_signal)
+signal.signal(signal.SIGINT, _handle_signal)
+
+
+def _restore_dataframes(stocks_raw: dict) -> dict:
+    """JSON dict → {ticker: DataFrame(OHLCV)} 복원"""
+    result = {}
+    for ticker, rows in stocks_raw.items():
+        if not rows:
+            continue
+        df = pd.DataFrame.from_dict(rows, orient="index")
+        df.index = pd.to_datetime(df.index)
+        df.columns = ["Open", "High", "Low", "Close", "Volume"]
+        result[ticker] = df
+    return result
+
+
+def _delivery_report(err, msg):
+    if err:
+        logger.error(f"전송 실패 [{msg.topic()}]: {err}")
 
 
 def main():
-    logger.info("[anomaly-detector] Phase 3 미구현 — Kafka 연동 후 활성화")
-    logger.info(f"  Kafka: {KAFKA_BOOTSTRAP}")
-    logger.info(f"  Thresholds: pct={THRESHOLD_PCT}%, z={THRESHOLD_Z}")
-    logger.info("  Subscribe: stock.raw.us, stock.raw.kr")
-    logger.info("  Publish:   anomaly.detected")
+    logger.info(
+        f"[anomaly-detector] 시작 | Kafka: {KAFKA_BOOTSTRAP} "
+        f"| 임계값: {THRESHOLD_PCT}%, {THRESHOLD_Z}σ"
+    )
 
-    # Phase 3 구현 예시:
-    # from core.stock_fetcher import detect_anomalies, classify_event_type
-    # from core.stock_categories import STOCK_CATEGORIES
-    # from confluent_kafka import Consumer, Producer
-    #
-    # consumer = Consumer({...})
-    # consumer.subscribe(["stock.raw.us", "stock.raw.kr"])
-    # producer = Producer({...})
-    # while True:
-    #     msg = consumer.poll(1.0)
-    #     anomalies = detect_anomalies(json.loads(msg.value()), THRESHOLD_PCT, THRESHOLD_Z)
-    #     for a in anomalies:
-    #         producer.produce("anomaly.detected", value=json.dumps(a))
+    try:
+        from core.stock_categories import STOCK_CATEGORIES
+        from core.stock_fetcher import classify_event_type, detect_anomalies
+    except ImportError as e:
+        logger.error(f"core 모듈 임포트 실패: {e}")
+        sys.exit(1)
+
+    consumer = Consumer({
+        "bootstrap.servers": KAFKA_BOOTSTRAP,
+        "group.id": GROUP_ID,
+        "auto.offset.reset": "earliest",
+        "fetch.message.max.bytes": 10_485_760,
+        "max.partition.fetch.bytes": 10_485_760,
+    })
+    producer = Producer({
+        "bootstrap.servers": KAFKA_BOOTSTRAP,
+    })
+
+    consumer.subscribe(["stock.raw.us", "stock.raw.kr"])
+    logger.info("구독 시작: stock.raw.us, stock.raw.kr")
+
+    try:
+        while _running:
+            msg = consumer.poll(timeout=1.0)
+            if msg is None:
+                continue
+            if msg.error():
+                if msg.error().code() == KafkaError._PARTITION_EOF:
+                    continue
+                logger.error(f"Kafka 오류: {msg.error()}")
+                continue
+
+            try:
+                data = json.loads(msg.value())
+                market = data.get("market", "us")
+                stocks_raw = data.get("stocks", {})
+
+                if not stocks_raw:
+                    logger.warning(f"[{market.upper()}] 빈 배치 메시지 — 건너뜀")
+                    continue
+
+                stock_data = _restore_dataframes(stocks_raw)
+                logger.info(f"[{market.upper()}] {len(stock_data)}개 종목 이상값 탐지 중")
+
+                anomalies = detect_anomalies(stock_data, THRESHOLD_PCT, THRESHOLD_Z)
+                recent = [a for a in anomalies if a.get("is_recent")]
+
+                if not recent:
+                    logger.info(f"[{market.upper()}] 최근 이상값 없음")
+                    continue
+
+                classified = classify_event_type(recent, STOCK_CATEGORIES)
+                logger.info(f"[{market.upper()}] 이상값 {len(classified)}건 감지")
+
+                for anomaly in classified:
+                    payload = {**anomaly, "date": str(anomaly["date"])}
+                    producer.produce(
+                        "anomaly.detected",
+                        key=anomaly["ticker"],
+                        value=json.dumps(payload, default=str),
+                        callback=_delivery_report,
+                    )
+
+                producer.flush()
+                logger.info(f"anomaly.detected {len(classified)}건 발행")
+
+            except Exception as e:
+                logger.error(f"메시지 처리 오류: {e}", exc_info=True)
+
+    finally:
+        consumer.close()
+        logger.info("[anomaly-detector] 종료")
 
 
 if __name__ == "__main__":
