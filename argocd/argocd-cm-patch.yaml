@@ -1,0 +1,23 @@
+---
+# ArgoCD 폴링 설정 패치
+#
+# ArgoCD는 기본적으로 Git 폴링 방식으로 동작합니다 (Webhook 불필요).
+# 이 ConfigMap 패치로 폴링 주기를 명시적으로 설정합니다.
+#
+# 적용:
+#   kubectl apply -f argocd/argocd-cm-patch.yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  # Git 폴링 주기 (초 단위) — 기본값 180s(3분), 여기서는 60초로 단축
+  timeout.reconciliation: "60"
+
+  # 레포지토리 서버가 Git에서 매니페스트를 가져오는 타임아웃
+  timeout.hard.reconciliation: "0"   # 0 = 제한 없음
+
+  # Webhook 수신 비활성화를 위해 별도 설정 필요 없음
+  # (기본값이 폴링이며, Webhook은 명시적으로 GitHub에 등록해야 활성화됨)
