@@ -1,4 +1,4 @@
-"""분석 파이프라인 서비스 - 기존 core 모듈을 FastAPI 비동기로 실행"""
+"""분석 파이프라인 서비스 - core 모듈을 FastAPI 비동기로 실행"""
 
 import asyncio
 import logging
@@ -11,7 +11,7 @@ from core.stock_fetcher import fetch_us_stocks, fetch_kr_stocks, detect_anomalie
     get_sector_anomaly_summary, classify_event_type
 from core.news_fetcher import fetch_news_for_anomaly, format_news_for_prompt
 from core.ai_analyzer import analyze_anomaly, analyze_sector_trends
-from server.db.repository import AnomalyRepository
+from db.repository import AnomalyRepository
 
 logger = logging.getLogger(__name__)
 

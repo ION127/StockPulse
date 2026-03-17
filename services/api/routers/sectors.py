@@ -3,9 +3,9 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from server.db.connection import get_db
-from server.db.repository import AnomalyRepository
-from server.schemas.anomaly import SectorTrendItem
+from db.connection import get_db
+from db.repository import AnomalyRepository
+from schemas.anomaly import SectorTrendItem
 
 router = APIRouter(prefix="/api/v1/sectors", tags=["Sectors"])
 

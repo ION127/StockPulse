@@ -9,9 +9,9 @@ from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from server.db.connection import init_db, AsyncSessionLocal
-from server.routers import anomalies, sectors, jobs
-from server.services.pipeline import run_pipeline
+from db.connection import init_db, AsyncSessionLocal
+from routers import anomalies, sectors, jobs
+from services.pipeline import run_pipeline
 
 logger = logging.getLogger(__name__)
 

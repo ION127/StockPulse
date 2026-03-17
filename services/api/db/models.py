@@ -4,7 +4,7 @@ from datetime import datetime, date
 from typing import Optional
 from sqlalchemy import Integer, String, Float, Date, DateTime, Text, JSON, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from server.db.connection import Base
+from db.connection import Base
 
 
 class Anomaly(Base):

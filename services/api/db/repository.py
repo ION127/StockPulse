@@ -6,7 +6,7 @@ from sqlalchemy import select, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from server.db.models import Anomaly, AnalysisResult
+from db.models import Anomaly, AnalysisResult
 
 
 class AnomalyRepository:

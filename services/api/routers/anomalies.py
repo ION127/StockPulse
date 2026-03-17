@@ -4,9 +4,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from server.db.connection import get_db
-from server.db.repository import AnomalyRepository
-from server.schemas.anomaly import AnomalyResponse, AnalysisResponse, NewsArticle
+from db.connection import get_db
+from db.repository import AnomalyRepository
+from schemas.anomaly import AnomalyResponse, AnalysisResponse, NewsArticle
 
 router = APIRouter(prefix="/api/v1/anomalies", tags=["Anomalies"])
 

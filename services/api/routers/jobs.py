@@ -4,11 +4,10 @@ import uuid
 import logging
 from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from server.db.connection import AsyncSessionLocal
-from server.schemas.anomaly import JobResponse
-from server.services.pipeline import run_pipeline
+from db.connection import AsyncSessionLocal
+from schemas.anomaly import JobResponse
+from services.pipeline import run_pipeline
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/analyze", tags=["Jobs"])
@@ -34,7 +33,7 @@ async def get_job_status(job_id: str):
 
 
 async def _run_job(job_id: str):
-    from server.main import ws_manager  # 순환 import 방지
+    from main import ws_manager  # 순환 import 방지
     _jobs[job_id]["status"] = "running"
     _jobs[job_id]["started_at"] = datetime.now()
     try:

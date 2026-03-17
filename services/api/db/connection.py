@@ -32,13 +32,11 @@ async def get_db() -> AsyncSession:
 
 async def init_db():
     """앱 시작 시 테이블 생성 + TimescaleDB Hypertable 설정"""
-    from server.db.models import Anomaly, AnalysisResult  # noqa: F401
+    from db.models import Anomaly, AnalysisResult  # noqa: F401
 
     async with engine.begin() as conn:
-        # 테이블 생성
         await conn.run_sync(Base.metadata.create_all)
 
-        # TimescaleDB Hypertable 설정 (설치된 경우에만)
         try:
             await conn.execute(text(
                 "SELECT create_hypertable('anomalies', 'anomaly_date', "

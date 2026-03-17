@@ -56,7 +56,7 @@ class SectorTrendItem(BaseModel):
     avg_return_pct: float
     up_count: int
     down_count: int
-    hot_tickers: list[str]   # 변동률 상위 종목
+    hot_tickers: list[str]
 
 
 class JobResponse(BaseModel):

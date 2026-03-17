@@ -2,7 +2,6 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 시스템 의존성
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
@@ -10,8 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Phase 3: confluent-kafka 추가 예정
+# RUN pip install confluent-kafka
 
-EXPOSE 8000
+COPY core/ ./core/
+COPY services/stock-collector/ ./
 
-CMD ["uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["python", "main.py"]
