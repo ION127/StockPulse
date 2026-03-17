@@ -1,0 +1,76 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stock-platform-ingress
+  namespace: stock
+  labels:
+    app.kubernetes.io/name: stock-platform
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: stock-platform
+  annotations:
+    # nginx 인그레스 컨트롤러 사용
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+
+    # ─────────────────────────────────────────────
+    # WebSocket 지원 설정 (/ws 경로)
+    # ─────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+
+    # WebSocket 업그레이드 헤더 설정
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+
+    # 프록시 버퍼 설정 (대용량 응답 처리)
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
+    nginx.ingress.kubernetes.io/proxy-buffers-number: "4"
+
+    # CORS 설정 (프론트엔드 ↔ API 통신)
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+
+    # 요청 크기 제한 (주식 데이터 업로드 고려)
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          # ─────────────────────────────────────────────
+          # WebSocket 경로 (/ws) - API 서버의 WebSocket 엔드포인트
+          # 주의: 더 구체적인 경로를 먼저 정의해야 함
+          # ─────────────────────────────────────────────
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: api-service
+                port:
+                  number: 8000
+
+          # ─────────────────────────────────────────────
+          # API 경로 (/api) - FastAPI 백엔드 서버
+          # ─────────────────────────────────────────────
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api-service
+                port:
+                  number: 8000
+
+          # ─────────────────────────────────────────────
+          # 루트 경로 (/) - Next.js 프론트엔드 서버
+          # ─────────────────────────────────────────────
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: 3000

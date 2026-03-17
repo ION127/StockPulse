@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stock-config
+  namespace: stock
+  labels:
+    app.kubernetes.io/name: stock-platform
+    app.kubernetes.io/component: config
+data:
+  # ─────────────────────────────────────────────
+  # Kafka 설정
+  # ─────────────────────────────────────────────
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+
+  # ─────────────────────────────────────────────
+  # 데이터베이스 URL (비밀번호는 Secret에서 주입)
+  # api/deployment.yaml에서 POSTGRES_PASSWORD를 Secret으로 먼저 정의하고
+  # 이 값은 해당 Deployment의 env 블록에서 직접 구성함
+  # ConfigMap에는 비밀번호 없는 URL 템플릿을 제공하지 않음 → Deployment에서 처리
+  # ─────────────────────────────────────────────
+
+  # ─────────────────────────────────────────────
+  # Redis 설정
+  # ─────────────────────────────────────────────
+  REDIS_URL: "redis://redis:6379"
+
+  # ─────────────────────────────────────────────
+  # 이상 탐지 임계값 설정
+  # ─────────────────────────────────────────────
+  ANOMALY_THRESHOLD_PERCENT: "1.5"       # 가격 변화율 임계값 (%)
+  ANOMALY_ZSCORE_THRESHOLD: "3.0"        # Z-Score 임계값
+
+  # ─────────────────────────────────────────────
+  # 데이터 수집 설정
+  # ─────────────────────────────────────────────
+  INTRADAY_RECENT_MINUTES: "5"           # 장중 최근 데이터 조회 시간 범위 (분)
+  SCHEDULE_INTERVAL_MINUTES: "60"        # 스케줄 실행 주기 (분)
+  STOCK_INTERVAL: "1m"                   # 주식 데이터 수집 간격
+  STOCK_PERIOD: "5d"                     # 주식 데이터 조회 기간
+  COLLECT_INTERVAL_SECONDS: "60"         # 수집 루프 실행 간격 (초)
+  FLUSH_INTERVAL_SECONDS: "60"           # Kafka flush 간격 (초)
+
+  # ─────────────────────────────────────────────
+  # 알림 설정
+  # ─────────────────────────────────────────────
+  NOTIFY_EVENT_TYPES: "INDIVIDUAL,SECTOR,MARKET"  # 알림 대상 이벤트 타입

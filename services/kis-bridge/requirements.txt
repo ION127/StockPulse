@@ -1,0 +1,11 @@
+# KIS Bridge 전용 의존성
+# Linux/Windows/Mac 모두 실행 가능 — Docker 지원
+
+# 비동기 HTTP 클라이언트 (토큰 발급)
+aiohttp>=3.9.0
+
+# 비동기 WebSocket 클라이언트 (실시간 체결)
+websockets>=12.0
+
+# Kafka 클라이언트
+confluent-kafka>=2.4.0

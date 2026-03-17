@@ -2,7 +2,7 @@
 
 from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import Integer, String, Float, Date, DateTime, Text, JSON, ForeignKey, func
+from sqlalchemy import BigInteger, Boolean, Integer, String, Float, Date, DateTime, Text, JSON, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.connection import Base
 
@@ -14,11 +14,13 @@ class Anomaly(Base):
     detected_at:         Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now())
     ticker:              Mapped[str]             = mapped_column(String(20), nullable=False, index=True)
     anomaly_date:        Mapped[date]            = mapped_column(Date, nullable=False, index=True)
+    bar_timestamp:       Mapped[Optional[str]]   = mapped_column(String(30))        # 1분봉 정확한 시각
     return_pct:          Mapped[float]           = mapped_column(Float, nullable=False)
     zscore:              Mapped[Optional[float]] = mapped_column(Float)
     close_price:         Mapped[Optional[float]] = mapped_column(Float)
-    volume:              Mapped[Optional[int]]   = mapped_column(Integer)
+    volume:              Mapped[Optional[int]]   = mapped_column(BigInteger)
     direction:           Mapped[str]             = mapped_column(String(10))
+    is_etf:              Mapped[bool]            = mapped_column(Boolean, default=False)
     event_type:          Mapped[str]             = mapped_column(String(20))
     sector:              Mapped[Optional[str]]   = mapped_column(String(100), index=True)
     sector_peer_count:   Mapped[Optional[int]]   = mapped_column(Integer)

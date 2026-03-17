@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: stock-platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: stock-platform
+    app.kubernetes.io/managed-by: argocd
+  # App 삭제 시 실제 리소스도 함께 삭제되도록 finalizer 설정
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # TODO: 실제 GitHub 레포지토리 URL로 교체하세요
+    repoURL: https://github.com/<YOUR_GITHUB_USERNAME>/<YOUR_REPO_NAME>
+    targetRevision: main
+    path: k8s/
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: stock
+
+  syncPolicy:
+    # 자동 동기화: Git 변경사항이 감지되면 자동으로 클러스터에 적용
+    automated:
+      prune: true      # Git에서 삭제된 리소스를 클러스터에서도 삭제
+      selfHeal: true   # 클러스터 상태가 Git과 다르면 자동으로 복구
+
+    syncOptions:
+      - CreateNamespace=true     # 네임스페이스가 없으면 자동 생성
+      - PrunePropagationPolicy=foreground  # 종속 리소스 먼저 삭제
+      - PruneLast=true           # 동기화 완료 후 불필요 리소스 삭제
+
+    # 재시도 설정 (일시적 오류 처리)
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

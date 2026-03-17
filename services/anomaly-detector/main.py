@@ -10,10 +10,15 @@ Anomaly Detector 서비스 — Phase 3
 메시지 형식 (anomaly.detected):
   key   : ticker
   value : {
-      ticker, date, return_pct, zscore, close_price, volume,
+      ticker, date, bar_timestamp, return_pct, zscore, close_price, volume,
       direction, event_type, sector,
       sector_peer_count, moving_sector_count, is_recent
   }
+
+환경변수:
+  ANOMALY_THRESHOLD_PERCENT  % 임계값 (장중 1분봉 기준 기본 1.5)
+  ANOMALY_ZSCORE_THRESHOLD   Z-score 임계값 (기본 3.0)
+  INTRADAY_RECENT_MINUTES    0 이면 날짜 기반(is_recent), 양수면 bar_timestamp 기준 N분 이내만 처리
 """
 
 import json
@@ -21,6 +26,7 @@ import logging
 import os
 import signal
 import sys
+from datetime import datetime, timedelta
 
 import pandas as pd
 from confluent_kafka import Consumer, KafkaError, Producer
@@ -31,10 +37,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("anomaly-detector")
 
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-THRESHOLD_PCT = float(os.getenv("ANOMALY_THRESHOLD_PERCENT", "8.0"))
-THRESHOLD_Z = float(os.getenv("ANOMALY_ZSCORE_THRESHOLD", "3.0"))
-GROUP_ID = "anomaly-detector-group"
+KAFKA_BOOTSTRAP          = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+THRESHOLD_PCT            = float(os.getenv("ANOMALY_THRESHOLD_PERCENT", "1.5"))
+THRESHOLD_Z              = float(os.getenv("ANOMALY_ZSCORE_THRESHOLD", "3.0"))
+INTRADAY_RECENT_MINUTES  = int(os.getenv("INTRADAY_RECENT_MINUTES", "5"))
+GROUP_ID                 = "anomaly-detector-group"
 
 _running = True
 
@@ -47,6 +54,14 @@ def _handle_signal(sig, frame):
 
 signal.signal(signal.SIGTERM, _handle_signal)
 signal.signal(signal.SIGINT, _handle_signal)
+
+
+def _parse_bar_ts(ts_str: str) -> datetime:
+    """bar_timestamp 문자열을 datetime으로 변환. 파싱 실패 시 datetime.min 반환."""
+    try:
+        return datetime.fromisoformat(ts_str)
+    except Exception:
+        return datetime.min
 
 
 def _restore_dataframes(stocks_raw: dict) -> dict:
@@ -118,7 +133,17 @@ def main():
                 logger.info(f"[{market.upper()}] {len(stock_data)}개 종목 이상값 탐지 중")
 
                 anomalies = detect_anomalies(stock_data, THRESHOLD_PCT, THRESHOLD_Z)
-                recent = [a for a in anomalies if a.get("is_recent")]
+
+                # 장중 모드: bar_timestamp 기준으로 최근 N분 이내만 처리
+                # 일별 모드: is_recent(5일 이내) 기준
+                if INTRADAY_RECENT_MINUTES > 0:
+                    cutoff = datetime.now() - timedelta(minutes=INTRADAY_RECENT_MINUTES)
+                    recent = [
+                        a for a in anomalies
+                        if _parse_bar_ts(a.get("bar_timestamp", "")) >= cutoff
+                    ]
+                else:
+                    recent = [a for a in anomalies if a.get("is_recent")]
 
                 if not recent:
                     logger.info(f"[{market.upper()}] 최근 이상값 없음")

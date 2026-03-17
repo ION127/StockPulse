@@ -1,3 +1,5 @@
 .env
+.gitignore
+SECRETS.md
 __pycache__/
 *.pyc

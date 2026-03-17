@@ -1,0 +1,177 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # Headless Service: StatefulSet Pod 간 DNS 기반 직접 통신 지원
+  # kafka-0.kafka-headless, kafka-1.kafka-headless, kafka-2.kafka-headless
+  name: kafka-headless
+  namespace: stock
+  labels:
+    app: kafka
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/part-of: stock-platform
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless Service
+  selector:
+    app: kafka
+  ports:
+    - name: broker
+      port: 9092
+      targetPort: 9092
+      protocol: TCP
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  # 클라이언트용 일반 서비스: 애플리케이션에서 kafka:9092로 접근
+  name: kafka
+  namespace: stock
+  labels:
+    app: kafka
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/part-of: stock-platform
+spec:
+  type: ClusterIP
+  selector:
+    app: kafka
+  ports:
+    - name: broker
+      port: 9092
+      targetPort: 9092
+      protocol: TCP
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: stock
+  labels:
+    app: kafka
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: infrastructure
+    app.kubernetes.io/part-of: stock-platform
+spec:
+  replicas: 3  # 3개 브로커로 고가용성 구성 (replication factor와 일치)
+  serviceName: kafka-headless
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+        app.kubernetes.io/name: kafka
+    spec:
+      containers:
+        - name: kafka
+          image: confluentinc/cp-kafka:7.6.0
+          ports:
+            - containerPort: 9092
+              name: broker
+              protocol: TCP
+
+          env:
+            # Pod 이름을 환경변수로 가져오기 (kafka-0, kafka-1, kafka-2)
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+            # Broker ID: Pod 이름 suffix에서 숫자만 추출
+            # kafka-0 → 0, kafka-1 → 1, kafka-2 → 2
+            - name: KAFKA_BROKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+
+            # ZooKeeper 연결
+            - name: KAFKA_ZOOKEEPER_CONNECT
+              value: "zookeeper:2181"
+
+            # Advertised Listeners: StatefulSet DNS로 브로커 간 통신
+            # 형식: PLAINTEXT://kafka-N.kafka-headless.stock.svc.cluster.local:9092
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://$(POD_NAME).kafka-headless:9092"
+
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT"
+
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"
+
+            # Offsets 토픽 복제 인수 (브로커 수와 일치시킴)
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "3"
+
+            # 트랜잭션 로그 복제 인수
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "3"
+
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "2"
+
+            # 최대 메시지 크기: 10MB (대용량 주식 데이터 배치 처리 지원)
+            - name: KAFKA_MESSAGE_MAX_BYTES
+              value: "10485760"
+
+            - name: KAFKA_REPLICA_FETCH_MAX_BYTES
+              value: "10485760"
+
+            # 로그 보관 기간
+            - name: KAFKA_LOG_RETENTION_HOURS
+              value: "168"  # 7일
+
+          # ─────────────────────────────────────────────
+          # 헬스체크
+          # ─────────────────────────────────────────────
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1"
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          # ─────────────────────────────────────────────
+          # 리소스 제한 설정
+          # ─────────────────────────────────────────────
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi

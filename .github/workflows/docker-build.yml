@@ -1,0 +1,174 @@
+name: Docker Build and Push to Harbor
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'k8s/**'
+      - '*.md'
+
+env:
+  SHORT_SHA: ${{ github.sha }}
+
+jobs:
+  build-and-push:
+    runs-on: self-hosted  # Harbor가 로컬에 있으므로 self-hosted runner 사용
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # SHORT_SHA 환경변수 설정 (7자리)
+      - name: Set short SHA
+        run: echo "SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_ENV
+
+      # Harbor 로그인
+      - name: Log in to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.HARBOR_URL }}
+          username: ${{ secrets.HARBOR_USER }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      # Docker Buildx 설정 (멀티플랫폼 빌드 지원)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ─────────────────────────────────────────────
+      # 백엔드 서비스 빌드 (build context: root)
+      # ─────────────────────────────────────────────
+
+      - name: Build and push api
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/api/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.HARBOR_URL }}/stock/api:${{ env.SHORT_SHA }}
+            ${{ secrets.HARBOR_URL }}/stock/api:latest
+          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/api:latest
+          cache-to: type=inline
+
+      - name: Build and push stock-collector
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/stock-collector/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.HARBOR_URL }}/stock/stock-collector:${{ env.SHORT_SHA }}
+            ${{ secrets.HARBOR_URL }}/stock/stock-collector:latest
+          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/stock-collector:latest
+          cache-to: type=inline
+
+      - name: Build and push kis-bridge
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/kis-bridge/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.HARBOR_URL }}/stock/kis-bridge:${{ env.SHORT_SHA }}
+            ${{ secrets.HARBOR_URL }}/stock/kis-bridge:latest
+          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/kis-bridge:latest
+          cache-to: type=inline
+
+      - name: Build and push anomaly-detector
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/anomaly-detector/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.HARBOR_URL }}/stock/anomaly-detector:${{ env.SHORT_SHA }}
+            ${{ secrets.HARBOR_URL }}/stock/anomaly-detector:latest
+          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/anomaly-detector:latest
+          cache-to: type=inline
+
+      - name: Build and push news-fetcher
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/news-fetcher/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.HARBOR_URL }}/stock/news-fetcher:${{ env.SHORT_SHA }}
+            ${{ secrets.HARBOR_URL }}/stock/news-fetcher:latest
+          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/news-fetcher:latest
+          cache-to: type=inline
+
+      - name: Build and push ai-analyzer
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/ai-analyzer/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.HARBOR_URL }}/stock/ai-analyzer:${{ env.SHORT_SHA }}
+            ${{ secrets.HARBOR_URL }}/stock/ai-analyzer:latest
+          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/ai-analyzer:latest
+          cache-to: type=inline
+
+      - name: Build and push notifier
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/notifier/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.HARBOR_URL }}/stock/notifier:${{ env.SHORT_SHA }}
+            ${{ secrets.HARBOR_URL }}/stock/notifier:latest
+          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/notifier:latest
+          cache-to: type=inline
+
+      # ─────────────────────────────────────────────
+      # 프론트엔드 빌드 (build context: ./frontend)
+      # ─────────────────────────────────────────────
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.HARBOR_URL }}/stock/frontend:${{ env.SHORT_SHA }}
+            ${{ secrets.HARBOR_URL }}/stock/frontend:latest
+          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/frontend:latest
+          cache-to: type=inline
+
+      # ─────────────────────────────────────────────
+      # K8s 매니페스트 이미지 태그 업데이트 (GitOps)
+      # ─────────────────────────────────────────────
+
+      - name: Update image tags in K8s manifests
+        run: |
+          # 각 서비스의 deployment.yaml에서 이미지 태그를 SHORT_SHA로 교체
+          SERVICES="api stock-collector kis-bridge anomaly-detector news-fetcher ai-analyzer notifier frontend"
+
+          for SERVICE in $SERVICES; do
+            MANIFEST="k8s/${SERVICE}/deployment.yaml"
+            if [ -f "$MANIFEST" ]; then
+              sed -i "s|harbor.local/stock/${SERVICE}:[^ ]*|harbor.local/stock/${SERVICE}:${SHORT_SHA}|g" "$MANIFEST"
+              echo "Updated ${MANIFEST} to tag ${SHORT_SHA}"
+            else
+              echo "Warning: ${MANIFEST} not found, skipping"
+            fi
+          done
+
+      # 변경된 매니페스트를 git에 커밋
+      - name: Commit updated manifests
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 변경된 파일이 있는 경우에만 커밋
+          if git diff --quiet k8s/; then
+            echo "No manifest changes to commit"
+          else
+            git add k8s/
+            git commit -m "ci: update image tags to ${SHORT_SHA} [skip ci]"
+            git push
+          fi

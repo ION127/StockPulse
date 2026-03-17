@@ -78,11 +78,13 @@ async def _save_and_broadcast(data: dict, loop: asyncio.AbstractEventLoop):
             saved = await repo.save_anomaly({
                 "ticker":              data["ticker"],
                 "anomaly_date":        data.get("date"),
+                "bar_timestamp":       data.get("bar_timestamp"),
                 "return_pct":          data["return_pct"],
                 "zscore":              data.get("zscore"),
                 "close_price":         data.get("close_price"),
                 "volume":              data.get("volume"),
                 "direction":           data["direction"],
+                "is_etf":              data.get("is_etf", False),
                 "event_type":          data.get("event_type", "INDIVIDUAL"),
                 "sector":              data.get("sector"),
                 "sector_peer_count":   data.get("sector_peer_count"),
@@ -213,6 +215,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Prometheus 계측 (설치되어 있을 때만 활성)
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app)
+    logger.info("Prometheus /metrics 엔드포인트 활성")
+except ImportError:
+    logger.warning("prometheus-fastapi-instrumentator 미설치 — /metrics 비활성")
 
 app.include_router(anomalies.router)
 app.include_router(sectors.router)

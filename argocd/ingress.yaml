@@ -1,0 +1,42 @@
+---
+# ArgoCD UI Ingress
+#
+# 접속 방법:
+#   1. /etc/hosts (또는 C:\Windows\System32\drivers\etc\hosts) 에 추가:
+#        10.0.2.200  argocd.local
+#   2. 브라우저에서 http://argocd.local 접속
+#
+# 초기 admin 비밀번호 확인:
+#   kubectl -n argocd get secret argocd-initial-admin-secret \
+#     -o jsonpath="{.data.password}" | base64 -d
+#
+# backend-protocol: HTTPS 방식 사용:
+#   - ArgoCD 서버를 수정하지 않아도 됨 (--insecure 패치 불필요)
+#   - nginx가 HTTP(80)로 요청을 받아 ArgoCD HTTPS 백엔드(443)로 프록시
+#   - nginx.ingress.kubernetes.io/ssl-redirect: "false" 로 무한 리다이렉트 방지
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-ingress
+  namespace: argocd
+  annotations:
+    # nginx가 ArgoCD 백엔드를 HTTPS로 연결 (ArgoCD 기본 TLS 유지)
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    # ingress 입구는 HTTP → HTTPS 강제 리다이렉트 하지 않음 (무한루프 방지)
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # gRPC (argocd CLI) 도 지원
+    nginx.ingress.kubernetes.io/http2-push-preload: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: argocd.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 443

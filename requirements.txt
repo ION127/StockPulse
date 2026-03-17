@@ -22,3 +22,6 @@ asyncpg>=0.29.0
 
 # ── Phase 3: Kafka 파이프라인 ─────────────────
 confluent-kafka>=2.4.0
+
+# ── Phase 4: Prometheus 계측 ──────────────────
+prometheus-fastapi-instrumentator>=6.1.0

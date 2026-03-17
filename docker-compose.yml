@@ -131,9 +131,29 @@ services:
       dockerfile: services/stock-collector/Dockerfile
     image: stock-collector:latest
     container_name: stock_collector
-    restart: "no"                       # K8s CronJob 방식 — 1회 실행 후 종료
+    restart: unless-stopped             # 1분봉 루프 — 상시 실행
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      STOCK_INTERVAL: "1m"              # yfinance 1분봉
+      STOCK_PERIOD: "5d"                # 최근 5일치 (Z-score 계산용)
+      COLLECT_INTERVAL_SECONDS: "60"    # 60초마다 수집
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  kis-bridge:
+    build:
+      context: .
+      dockerfile: services/kis-bridge/Dockerfile
+    image: stock-kis-bridge:latest
+    container_name: stock_kis_bridge
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KIS_APP_KEY: ${KIS_APP_KEY}
+      KIS_APP_SECRET: ${KIS_APP_SECRET}
+      KIS_MOCK: ${KIS_MOCK:-false}          # 모의투자: true / 실전: false
+      FLUSH_INTERVAL_SECONDS: "60"
     depends_on:
       kafka:
         condition: service_healthy
@@ -147,8 +167,9 @@ services:
     restart: unless-stopped
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      ANOMALY_THRESHOLD_PERCENT: ${ANOMALY_THRESHOLD_PERCENT:-8.0}
+      ANOMALY_THRESHOLD_PERCENT: ${ANOMALY_THRESHOLD_PERCENT:-1.5}   # 1분봉 기준 (일봉은 7~8%)
       ANOMALY_ZSCORE_THRESHOLD: ${ANOMALY_ZSCORE_THRESHOLD:-3.0}
+      INTRADAY_RECENT_MINUTES: "5"      # 최근 5분 이내 bar만 이상값으로 처리
     depends_on:
       kafka:
         condition: service_healthy

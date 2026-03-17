@@ -1,0 +1,40 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-analyzer-hpa
+  namespace: stock
+  labels:
+    app: ai-analyzer
+    app.kubernetes.io/name: ai-analyzer
+    app.kubernetes.io/component: analyzer
+    app.kubernetes.io/part-of: stock-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-analyzer
+  # AI 분석기는 최소 2개 유지, 최대 5개 (Gemini API 요금/속도 제한 고려)
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # CPU 사용률 70% 초과 시 스케일 아웃
+  behavior:
+    # 스케일 아웃: 적당히 (API 요금 제한 고려)
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+    # 스케일 인: 천천히
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 180

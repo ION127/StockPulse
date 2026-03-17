@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stock
+  labels:
+    # 주식 이상 탐지 플랫폼 네임스페이스
+    app.kubernetes.io/name: stock-platform
+    app.kubernetes.io/managed-by: kubectl

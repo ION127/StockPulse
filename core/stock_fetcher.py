@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_us_stocks(tickers: list[str], period_days: int = 30) -> dict[str, pd.DataFrame]:
     """
-    미국 주식 데이터 수집 (yfinance)
+    미국 주식 데이터 수집 (yfinance) — 일봉
     반환: {ticker: DataFrame(Date, Open, High, Low, Close, Volume)}
     """
     results = {}
@@ -36,6 +36,35 @@ def fetch_us_stocks(tickers: list[str], period_days: int = 30) -> dict[str, pd.D
             logger.warning(f"{ticker} 수집 실패: {e}")
 
     logger.info(f"미국 주식 {len(results)}개 수집 완료")
+    return results
+
+
+def fetch_us_stocks_intraday(
+    tickers: list[str],
+    interval: str = "1m",
+    period: str = "5d",
+) -> dict[str, pd.DataFrame]:
+    """
+    미국 주식 장중 데이터 수집 (yfinance)
+    - interval: '1m'~'90m' (1m은 최대 7일치만 제공)
+    - period: '1d'~'7d' (1m 기준)
+    반환: {ticker: DataFrame(Datetime, Open, High, Low, Close, Volume)}
+    """
+    results = {}
+    logger.info(f"미국 주식 장중 {len(tickers)}개 수집 중 (interval={interval}, period={period})...")
+
+    for ticker in tickers:
+        try:
+            stock = yf.Ticker(ticker)
+            df = stock.history(period=period, interval=interval)
+            if not df.empty:
+                if hasattr(df.index, "tz") and df.index.tz is not None:
+                    df.index = df.index.tz_localize(None)
+                results[ticker] = df[["Open", "High", "Low", "Close", "Volume"]]
+        except Exception as e:
+            logger.warning(f"{ticker} 장중 수집 실패: {e}")
+
+    logger.info(f"미국 주식 장중 {len(results)}개 수집 완료")
     return results
 
 
@@ -120,6 +149,7 @@ def detect_anomalies(
                 anomalies.append({
                     "ticker": ticker,
                     "date": anomaly_date,
+                    "bar_timestamp": date.isoformat() if hasattr(date, "isoformat") else str(date),
                     "return_pct": round(ret, 2),
                     "zscore": round(zscore, 2),
                     "close_price": round(row["Close"], 2),
@@ -140,61 +170,96 @@ def classify_event_type(
     market_trigger_sectors: int = 3,
 ) -> list[dict]:
     """
-    이상값 이벤트 유형 분류:
-      - INDIVIDUAL : 해당 종목만 이상값 (개별 이벤트)
-      - SECTOR     : 같은 섹터 내 N개 이상 종목이 같은 방향으로 이상값 (섹터 이벤트)
-      - MARKET     : N개 이상 섹터가 같은 방향으로 이상값 (시장 전체 이벤트)
+    이상값 이벤트 유형 분류 (ETF 인식):
+      - INDIVIDUAL : 개별 종목만 이상값 (해당 섹터 ETF 미포함)
+      - SECTOR     : 섹터 ETF가 이상값이거나, 같은 섹터 N개 이상 종목이 함께 움직임
+      - MARKET     : N개 이상 섹터 ETF 또는 섹터가 같은 방향으로 움직임
 
-    sector_trigger_count  : 섹터 이벤트로 보려면 같은 섹터에서 몇 개 이상 터져야 하는지
-    market_trigger_sectors: 시장 전체 이벤트로 보려면 몇 개 이상 섹터가 함께 움직여야 하는지
+    ETF 이상값 우선 규칙:
+      - 섹터 ETF 자체가 이상값 → 최소 SECTOR 이벤트로 강제
+      - 여러 섹터 ETF가 동시 이상값 → MARKET 이벤트로 강제
+
+    sector_trigger_count  : ETF 없이 섹터 이벤트로 보려면 같은 섹터에서 몇 개 이상
+    market_trigger_sectors: MARKET 이벤트로 보려면 몇 개 이상 섹터가 함께 움직여야 하는지
     """
-    # ticker -> category 역매핑
-    ticker_to_category = {}
+    from collections import defaultdict
+    try:
+        from core.stock_categories import is_etf
+    except ImportError:
+        is_etf = lambda t: False  # noqa: E731
+
+    # ticker -> category 역매핑 (ETF 포함)
+    ticker_to_category: dict[str, str] = {}
     for cat_name, cat_data in categories.items():
+        for t in cat_data.get("etfs_us", []):
+            ticker_to_category[t] = cat_name
         for t in cat_data.get("tickers_us", []):
+            ticker_to_category[t] = cat_name
+        for t in cat_data.get("etfs_kr", []):
+            ticker_to_category[f"KR:{t}"] = cat_name
             ticker_to_category[t] = cat_name
         for t in cat_data.get("tickers_kr", []):
             ticker_to_category[f"KR:{t}"] = cat_name
 
-    # 날짜별로 이상값 묶기 (같은 날 발생한 것끼리 비교)
-    from collections import defaultdict
-    by_date = defaultdict(list)
+    # 날짜별로 이상값 묶기
+    by_date: dict = defaultdict(list)
     for a in anomalies:
         by_date[a["date"]].append(a)
 
     result = []
     for a in anomalies:
-        same_day = by_date[a["date"]]
+        same_time = by_date[a["date"]]
         my_sector = ticker_to_category.get(a["ticker"], "기타")
-        my_dir = a["direction"]  # 급등 or 급락
+        my_dir    = a["direction"]
+        ticker_is_etf = is_etf(a["ticker"])
 
-        # 같은 날, 같은 섹터, 같은 방향으로 움직인 종목 수
+        # 같은 시간대, 같은 방향으로 이상값인 섹터 ETF 목록
+        moving_etf_sectors = set(
+            ticker_to_category.get(x["ticker"], "기타")
+            for x in same_time
+            if is_etf(x["ticker"]) and x["direction"] == my_dir
+        )
+
+        # 같은 섹터, 같은 방향 동시 이상값 종목 (자신 제외)
         sector_peers = [
-            x for x in same_day
+            x for x in same_time
             if ticker_to_category.get(x["ticker"], "기타") == my_sector
             and x["direction"] == my_dir
             and x["ticker"] != a["ticker"]
         ]
 
-        # 같은 날, 같은 방향으로 움직인 섹터 수
+        # 같은 방향으로 움직인 섹터 수 (ETF 기준 우선, 없으면 개별종목 기준)
         moving_sectors = set(
             ticker_to_category.get(x["ticker"], "기타")
-            for x in same_day
+            for x in same_time
             if x["direction"] == my_dir
         )
 
-        if len(moving_sectors) >= market_trigger_sectors:
-            event_type = "MARKET"      # 시장 전체 이벤트
+        # 이벤트 유형 판정
+        if len(moving_etf_sectors) >= market_trigger_sectors:
+            # 여러 섹터 ETF가 동시에 움직임 → 시장 전체 이벤트
+            event_type = "MARKET"
+        elif len(moving_sectors) >= market_trigger_sectors:
+            # ETF 없이도 여러 섹터가 함께 움직임
+            event_type = "MARKET"
+        elif ticker_is_etf:
+            # ETF 자체가 이상값 → 섹터 이벤트로 강제 상향
+            event_type = "SECTOR"
+        elif my_sector in moving_etf_sectors:
+            # 해당 섹터 ETF가 함께 움직임 → 섹터 이벤트
+            event_type = "SECTOR"
         elif len(sector_peers) >= sector_trigger_count - 1:
-            event_type = "SECTOR"      # 섹터 이벤트
+            # 같은 섹터 종목이 함께 움직임
+            event_type = "SECTOR"
         else:
-            event_type = "INDIVIDUAL"  # 개별 이벤트
+            event_type = "INDIVIDUAL"
 
         result.append({
             **a,
-            "event_type": event_type,
-            "sector": my_sector,
-            "sector_peer_count": len(sector_peers) + 1,   # 자신 포함
+            "event_type":          event_type,
+            "sector":              my_sector,
+            "is_etf":              ticker_is_etf,
+            "sector_peer_count":   len(sector_peers) + 1,
             "moving_sector_count": len(moving_sectors),
         })
 

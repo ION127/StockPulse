@@ -8,11 +8,13 @@ from pydantic import BaseModel
 class AnomalyBase(BaseModel):
     ticker: str
     anomaly_date: date
+    bar_timestamp: Optional[str] = None   # 1분봉 정확한 시각 (YYYY-MM-DDTHH:MM:SS)
     return_pct: float
     zscore: Optional[float] = None
     close_price: Optional[float] = None
     volume: Optional[int] = None
     direction: str           # "급등" or "급락"
+    is_etf: bool = False
     event_type: str          # "INDIVIDUAL", "SECTOR", "MARKET"
     sector: Optional[str] = None
     sector_peer_count: Optional[int] = None

@@ -1,0 +1,255 @@
+# =============================================================================
+# kube-prometheus-stack Helm Values
+# 주식 이상 탐지 플랫폼 모니터링 설정
+#
+# 설치 방법:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm repo update
+#   helm install monitoring prometheus-community/kube-prometheus-stack \
+#     --namespace monitoring \
+#     --create-namespace \
+#     --values monitoring/prometheus-values.yaml
+#
+# 업그레이드:
+#   helm upgrade monitoring prometheus-community/kube-prometheus-stack \
+#     --namespace monitoring \
+#     --values monitoring/prometheus-values.yaml
+# =============================================================================
+
+# ─────────────────────────────────────────────
+# Grafana 설정
+# ─────────────────────────────────────────────
+grafana:
+  enabled: true
+
+  # 기본 관리자 비밀번호 (실제 배포 시 변경 필수)
+  adminPassword: "admin"  # TODO: 프로덕션에서 변경
+
+  # 대시보드 자동 로드: ConfigMap 기반 대시보드 스캔
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+      label: grafana_dashboard
+      labelValue: "1"
+    datasources:
+      enabled: true
+
+  # Grafana 서비스 설정
+  service:
+    type: ClusterIP
+    port: 3000
+
+  # 영구 저장소 (대시보드, 플러그인 유지)
+  persistence:
+    enabled: true
+    size: 5Gi
+
+  # 추가 데이터소스 설정
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      url: http://loki:3100
+      isDefault: false
+
+# ─────────────────────────────────────────────
+# Prometheus 설정
+# ─────────────────────────────────────────────
+prometheus:
+  prometheusSpec:
+    # 데이터 보관 기간
+    retention: 30d
+    retentionSize: "50GB"
+
+    # 스크레이프 간격
+    scrapeInterval: "15s"
+    evaluationInterval: "15s"
+
+    # 영구 저장소
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+
+    # 리소스 설정
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+
+    # ─────────────────────────────────────────────
+    # 추가 스크레이프 설정 (FastAPI /metrics 엔드포인트)
+    # ─────────────────────────────────────────────
+    additionalScrapeConfigs:
+      # FastAPI API 서버 메트릭 수집
+      - job_name: "stock-api"
+        scrape_interval: "15s"
+        metrics_path: "/metrics"
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - stock
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: api
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: "$1:8000"
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+      # anomaly-detector 메트릭 수집
+      - job_name: "stock-anomaly-detector"
+        scrape_interval: "15s"
+        metrics_path: "/metrics"
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - stock
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: anomaly-detector
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: "$1:8001"
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+
+      # ai-analyzer 메트릭 수집
+      - job_name: "stock-ai-analyzer"
+        scrape_interval: "30s"
+        metrics_path: "/metrics"
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - stock
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: ai-analyzer
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: "$1:8002"
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+
+      # Kafka JMX Exporter 메트릭 수집 (kafka-exporter 별도 배포 필요)
+      - job_name: "kafka"
+        scrape_interval: "30s"
+        static_configs:
+          - targets:
+              - "kafka-exporter:9308"  # kafka_exporter 서비스
+
+# ─────────────────────────────────────────────
+# Alertmanager 설정
+# ─────────────────────────────────────────────
+alertmanager:
+  alertmanagerSpec:
+    # 리소스 설정
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "128Mi"
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+
+  config:
+    global:
+      # Slack Webhook (실제 URL로 교체)
+      slack_api_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+      resolve_timeout: 5m
+
+    route:
+      group_by: ["alertname", "namespace"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: "default"
+      routes:
+        # 크리티컬 알림: 즉시 Slack 전송
+        - matchers:
+            - name: severity
+              value: critical
+          receiver: slack-critical
+          group_wait: 10s
+
+        # 이상 탐지 관련 알림
+        - matchers:
+            - name: job
+              value: stock-anomaly-detector
+          receiver: slack-anomaly
+
+    receivers:
+      - name: "default"
+        slack_configs:
+          - channel: "#alerts"
+            title: "[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}"
+            text: "{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}"
+            send_resolved: true
+
+      - name: "slack-critical"
+        slack_configs:
+          - channel: "#alerts-critical"
+            title: "CRITICAL: {{ .GroupLabels.alertname }}"
+            text: "{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}"
+            send_resolved: true
+
+      - name: "slack-anomaly"
+        slack_configs:
+          - channel: "#stock-anomaly"
+            title: "[이상 탐지] {{ .GroupLabels.alertname }}"
+            text: "{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}"
+            send_resolved: true
+
+# ─────────────────────────────────────────────
+# 기본 알림 규칙 비활성화 (커스텀 규칙 사용)
+# ─────────────────────────────────────────────
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false  # 외부 etcd 미사용
+    configReloaders: true
+    general: true
+    kubeApiserver: true
+    kubeApiserverAvailability: true
+    kubeApiserverSlos: true
+    kubelet: true
+    kubeProxy: false
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesAbsent: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeScheduler: false
+    kubeStateMetrics: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
+
+# kube-state-metrics 활성화
+kubeStateMetrics:
+  enabled: true
+
+# node-exporter 활성화 (노드 메트릭)
+nodeExporter:
+  enabled: true

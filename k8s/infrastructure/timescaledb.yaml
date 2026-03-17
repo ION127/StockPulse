@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescaledb-service
+  namespace: stock
+  labels:
+    app: timescaledb
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: stock-platform
+spec:
+  type: ClusterIP
+  selector:
+    app: timescaledb
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescaledb
+  namespace: stock
+  labels:
+    app: timescaledb
+    app.kubernetes.io/name: timescaledb
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: stock-platform
+spec:
+  # TimescaleDB는 단일 인스턴스 (고가용성이 필요하면 timescaledb-ha 사용)
+  replicas: 1
+  serviceName: timescaledb-service
+  selector:
+    matchLabels:
+      app: timescaledb
+  template:
+    metadata:
+      labels:
+        app: timescaledb
+        app.kubernetes.io/name: timescaledb
+    spec:
+      # DB Pod가 삭제되더라도 데이터 손실을 막기 위해 terminationGracePeriodSeconds 설정
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        - name: timescaledb
+          image: timescale/timescaledb:latest-pg15
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              name: postgres
+              protocol: TCP
+
+          # DB 접속 정보는 Secret에서 주입 (POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB)
+          envFrom:
+            - secretRef:
+                name: stock-db-secret
+
+          # ─────────────────────────────────────────────
+          # 헬스체크
+          # ─────────────────────────────────────────────
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # ─────────────────────────────────────────────
+          # 리소스 제한 설정
+          # ─────────────────────────────────────────────
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+
+          volumeMounts:
+            - name: timescaledb-data
+              mountPath: /var/lib/postgresql/data
+
+  # 영구 볼륨 클레임: 20Gi (시계열 주식 데이터 장기 보관)
+  volumeClaimTemplates:
+    - metadata:
+        name: timescaledb-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
