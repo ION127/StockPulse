@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+
+  # ── TimescaleDB (PostgreSQL + 시계열 확장) ────────────────────────────
+  db:
+    image: timescale/timescaledb:latest-pg15
+    container_name: stock_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stock
+      POSTGRES_PASSWORD: stock1234
+      POSTGRES_DB: stockdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stock -d stockdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (캐시 + 실시간 큐) ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: stock_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI 백엔드 ──────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stock_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://stock:stock1234@db:5432/stockdb
+      REDIS_URL: redis://redis:6379
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      NEWS_API_KEY: ${NEWS_API_KEY}
+      ANOMALY_THRESHOLD_PERCENT: ${ANOMALY_THRESHOLD_PERCENT:-8.0}
+      ANOMALY_ZSCORE_THRESHOLD: ${ANOMALY_ZSCORE_THRESHOLD:-3.0}
+      SCHEDULE_INTERVAL_MINUTES: ${SCHEDULE_INTERVAL_MINUTES:-60}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app  # 개발 중 코드 변경 즉시 반영
+
+volumes:
+  db_data:

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p core cli server/routers server/db server/schemas server/services)",
+      "Bash(cp stock_categories.py core/stock_categories.py)",
+      "Bash(cp stock_fetcher.py core/stock_fetcher.py)",
+      "Bash(cp news_fetcher.py core/news_fetcher.py)",
+      "Bash(cp ai_analyzer.py core/ai_analyzer.py)"
+    ]
+  }
+}
