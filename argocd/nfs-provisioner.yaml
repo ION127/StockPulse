@@ -1,0 +1,60 @@
+---
+# NFS Subdir External Provisioner — ArgoCD로 설치
+#
+# 이 App을 apply하면 NFS 동적 프로비저닝이 활성화됩니다.
+# nfs-subdir-external-provisioner가 PVC 생성 시 NFS 경로에 자동으로 디렉토리를 만들어줍니다.
+#
+# 적용:
+#   kubectl apply -f argocd/nfs-provisioner.yaml
+#
+# TODO: 아래 NFS 서버 IP와 경로를 실제 환경에 맞게 수정하세요.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nfs-provisioner
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
+    chart: nfs-subdir-external-provisioner
+    targetRevision: "4.0.18"
+    helm:
+      releaseName: nfs-subdir-external-provisioner
+      values: |
+        nfs:
+          # TODO: 실제 NFS 서버 IP로 교체
+          server: "192.168.1.100"
+          # TODO: 실제 NFS 공유 경로로 교체
+          path: "/data/nfs"
+          mountOptions:
+            - vers=4.1
+
+        storageClass:
+          name: nfs-stock
+          defaultClass: true       # 기본 StorageClass로 등록
+          reclaimPolicy: Retain    # PVC 삭제 시 NFS 디렉토리 보존
+          archiveOnDelete: "false"
+          onDelete: retain
+
+        # Provisioner Pod 리소스
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

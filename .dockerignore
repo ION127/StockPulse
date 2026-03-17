@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+.eggs
+dist/
+build/
+*.egg
+
+# 가상환경
+.venv
+venv
+env
+.env
+
+# 테스트/커버리지
+.pytest_cache
+.coverage
+htmlcov/
+.tox
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# 문서/설정 (이미지에 불필요)
+ARCHITECTURE.md
+SECRETS.md
+*.md
+docker-compose.yml
+.github/
+
+# K8s/ArgoCD/모니터링 (소스코드 아님)
+k8s/
+argocd/
+monitoring/
+
+# Node.js (api 이미지에 불필요)
+frontend/
+node_modules/

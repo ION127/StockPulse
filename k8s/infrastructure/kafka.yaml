@@ -83,21 +83,25 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
 
-            # Broker ID: Pod 이름 suffix에서 숫자만 추출
+            # Broker ID: Pod 호스트명 suffix에서 숫자 추출
             # kafka-0 → 0, kafka-1 → 1, kafka-2 → 2
-            - name: KAFKA_BROKER_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+            # KAFKA_BROKER_ID_COMMAND는 cp-kafka 이미지 공식 지원 방식 (K8s 버전 무관)
+            - name: KAFKA_BROKER_ID_COMMAND
+              value: "echo ${HOSTNAME##*-}"
+
+            # JVM 힙 크기 고정 — 미설정 시 limit(2Gi) 기준으로 자동 설정되어
+            # 브로커 3개 합산 최대 6Gi 소비 → 2코어 8GB 노드에서 OOMKill 위험
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xmx512m -Xms256m"
 
             # ZooKeeper 연결
             - name: KAFKA_ZOOKEEPER_CONNECT
               value: "zookeeper:2181"
 
             # Advertised Listeners: StatefulSet DNS로 브로커 간 통신
-            # 형식: PLAINTEXT://kafka-N.kafka-headless.stock.svc.cluster.local:9092
+            # $(POD_NAME)은 위에서 정의된 env var → K8s가 치환해줌
             - name: KAFKA_ADVERTISED_LISTENERS
-              value: "PLAINTEXT://$(POD_NAME).kafka-headless:9092"
+              value: "PLAINTEXT://$(POD_NAME).kafka-headless.stock.svc.cluster.local:9092"
 
             - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
               value: "PLAINTEXT:PLAINTEXT"
@@ -161,7 +165,7 @@ spec:
               memory: "512Mi"
             limits:
               cpu: "1000m"
-              memory: "2Gi"
+              memory: "1Gi"   # 힙 512m 고정 → 1Gi limit으로 충분
 
           volumeMounts:
             - name: kafka-data
@@ -172,6 +176,7 @@ spec:
         name: kafka-data
       spec:
         accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-stock   # k8s/infrastructure/nfs-storage.yaml 에서 정의
         resources:
           requests:
             storage: 20Gi

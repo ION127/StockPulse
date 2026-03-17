@@ -13,9 +13,9 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: api
-  # API 서버는 최소 2개 유지 (고가용성), 최대 10개까지 스케일 아웃
-  minReplicas: 2
-  maxReplicas: 10
+  # worker 4GB × 3대 환경 — 최소 1개, 최대 3개 (RAM 여유 기준)
+  minReplicas: 1
+  maxReplicas: 3
   metrics:
     - type: Resource
       resource:

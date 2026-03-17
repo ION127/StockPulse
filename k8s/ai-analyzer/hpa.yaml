@@ -13,9 +13,9 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: ai-analyzer
-  # AI 분석기는 최소 2개 유지, 최대 5개 (Gemini API 요금/속도 제한 고려)
-  minReplicas: 2
-  maxReplicas: 5
+  # worker 4GB × 3대 환경 — 최소 1개, 최대 2개
+  minReplicas: 1
+  maxReplicas: 2
   metrics:
     - type: Resource
       resource:

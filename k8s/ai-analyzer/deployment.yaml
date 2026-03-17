@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/part-of: stock-platform
 spec:
   # AI 분석기는 2개 인스턴스로 운영 (Gemini API 병렬 호출)
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: ai-analyzer

@@ -65,6 +65,9 @@ spec:
             # ZooKeeper 기본 시간 단위 (ms), 세션 타임아웃 = 2 * tickTime
             - name: ZOOKEEPER_TICK_TIME
               value: "2000"
+            # JVM 힙 크기 고정 (미설정 시 limit 기준으로 과도하게 설정됨)
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xmx256m -Xms128m"
             # 서버 ID (StatefulSet에서 Pod 순서대로 1부터 시작)
             - name: ZOOKEEPER_SERVER_ID
               valueFrom:
@@ -118,6 +121,7 @@ spec:
         name: zookeeper-data
       spec:
         accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-stock
         resources:
           requests:
             storage: 5Gi
@@ -125,6 +129,7 @@ spec:
         name: zookeeper-log
       spec:
         accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-stock
         resources:
           requests:
             storage: 2Gi

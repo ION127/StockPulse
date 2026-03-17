@@ -106,6 +106,7 @@ spec:
         name: timescaledb-data
       spec:
         accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-stock   # k8s/infrastructure/nfs-storage.yaml 에서 정의
         resources:
           requests:
             storage: 20Gi

@@ -11,10 +11,12 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://stock:stock1234@localhost:5432/stockdb",
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    # 로컬 개발 전용 기본값 (K8s에서는 반드시 env var로 주입됨)
+    import warnings
+    warnings.warn("DATABASE_URL 환경변수가 없습니다. 로컬 개발 기본값을 사용합니다.", stacklevel=2)
+    DATABASE_URL = "postgresql+asyncpg://stock:stock1234@localhost:5432/stockdb"
 
 engine = create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)

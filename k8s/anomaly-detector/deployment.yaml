@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/part-of: stock-platform
 spec:
   # 이상 탐지 워커는 Kafka 파티션 병렬 처리를 위해 2개 운영
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: anomaly-detector

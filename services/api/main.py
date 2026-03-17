@@ -228,6 +228,10 @@ app.include_router(anomalies.router)
 app.include_router(sectors.router)
 app.include_router(jobs.router)
 
+# jobs 라우터에 ws_manager.broadcast 주입 (순환 임포트 없이)
+from routers.jobs import set_broadcast  # noqa: E402
+set_broadcast(ws_manager.broadcast)
+
 
 @app.websocket("/ws/live")
 async def websocket_endpoint(ws: WebSocket):

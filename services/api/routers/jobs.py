@@ -3,6 +3,7 @@
 import uuid
 import logging
 from datetime import datetime
+from typing import Callable, Awaitable
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from db.connection import AsyncSessionLocal
@@ -13,6 +14,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/analyze", tags=["Jobs"])
 
 _jobs: dict[str, dict] = {}
+
+# main.py에서 앱 시작 시 set_broadcast()로 주입 (순환 임포트 방지)
+_broadcast: Callable[[dict], Awaitable[None]] | None = None
+
+
+def set_broadcast(fn: Callable[[dict], Awaitable[None]]) -> None:
+    global _broadcast
+    _broadcast = fn
+
+
+async def _noop_broadcast(_: dict) -> None:
+    pass
 
 
 @router.post("/trigger", response_model=JobResponse)
@@ -33,12 +46,12 @@ async def get_job_status(job_id: str):
 
 
 async def _run_job(job_id: str):
-    from main import ws_manager  # 순환 import 방지
+    broadcast = _broadcast or _noop_broadcast
     _jobs[job_id]["status"] = "running"
     _jobs[job_id]["started_at"] = datetime.now()
     try:
         async with AsyncSessionLocal() as db:
-            result = await run_pipeline(db=db, broadcast=ws_manager.broadcast)
+            result = await run_pipeline(db=db, broadcast=broadcast)
         _jobs[job_id].update({"status": "done", "completed_at": datetime.now(),
                                "anomaly_count": result.get("anomaly_count", 0),
                                "message": f"완료: {result.get('analyzed_count', 0)}개 분석"})

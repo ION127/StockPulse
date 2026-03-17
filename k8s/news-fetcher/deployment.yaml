@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/part-of: stock-platform
 spec:
   # 뉴스 수집기는 2개 인스턴스로 운영 (고가용성)
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: news-fetcher

@@ -99,7 +99,5 @@ spec:
 
       volumes:
         - name: redis-data
-          emptyDir: {}
-          # 영속성이 필요하면 아래 PVC로 교체
-          # persistentVolumeClaim:
-          #   claimName: redis-pvc
+          persistentVolumeClaim:
+            claimName: redis-pvc   # k8s/infrastructure/nfs-storage.yaml 에서 정의
