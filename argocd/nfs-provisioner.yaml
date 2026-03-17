@@ -26,7 +26,7 @@ spec:
       values: |
         nfs:
           # TODO: 실제 NFS 서버 IP로 교체
-          server: "192.168.1.100"
+          server: "10.0.2.105"
           # TODO: 실제 NFS 공유 경로로 교체
           path: "/data/nfs"
           mountOptions:

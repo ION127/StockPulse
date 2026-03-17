@@ -26,7 +26,7 @@ spec:
       containers:
         - name: api
           # CI/CD 파이프라인에서 SHORT_SHA로 자동 업데이트됨
-          image: harbor.local/stock/api:latest
+          image: 10.0.2.105/stock/api:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

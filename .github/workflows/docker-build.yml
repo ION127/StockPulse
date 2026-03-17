@@ -148,10 +148,12 @@ jobs:
           # 각 서비스의 deployment.yaml에서 이미지 태그를 SHORT_SHA로 교체
           SERVICES="api stock-collector kis-bridge anomaly-detector news-fetcher ai-analyzer notifier frontend"
 
+          HARBOR="${{ secrets.HARBOR_URL }}"
+
           for SERVICE in $SERVICES; do
             MANIFEST="k8s/${SERVICE}/deployment.yaml"
             if [ -f "$MANIFEST" ]; then
-              sed -i "s|harbor.local/stock/${SERVICE}:[^ ]*|harbor.local/stock/${SERVICE}:${SHORT_SHA}|g" "$MANIFEST"
+              sed -i "s|${HARBOR}/stock/${SERVICE}:[^ ]*|${HARBOR}/stock/${SERVICE}:${SHORT_SHA}|g" "$MANIFEST"
               echo "Updated ${MANIFEST} to tag ${SHORT_SHA}"
             else
               echo "Warning: ${MANIFEST} not found, skipping"
