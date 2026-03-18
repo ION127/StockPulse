@@ -1,6 +1,9 @@
 ---
 # ════════════════════════════════════════════════════════════════════════════
-# NFS 기반 StorageClass + PersistentVolume 설정
+# NFS 기반 PersistentVolume 설정
+#
+# StorageClass/nfs-stock 은 argocd/nfs-provisioner.yaml (Helm 차트)이 관리합니다.
+# 여기서 중복 정의 시 ArgoCD SharedResourceWarning + immutable 필드 SyncError 발생.
 #
 # NFS 서버 초기 설정 (infra VM: 10.0.2.105) — 최초 1회만 실행:
 #
@@ -16,37 +19,8 @@
 #
 # PV-PVC 바인딩 원칙:
 #   claimRef를 명시해 Kubernetes가 임의 바인딩하는 것을 방지
-#
-# mountOptions 설명:
-#   noresvport  : 재연결 시 비예약 포트 사용 → force delete 후 마운트 복구 가능
-#   vers=4.1    : NFS 버전 고정 (자동 협상 대신 명시적 지정으로 안정성 향상)
-#   timeo=30    : NFS 응답 대기 시간 3초 (기본 600 = 60초보다 빠른 장애 감지)
-#   retrans=3   : 재전송 횟수 (hard mount이므로 실제 포기하지 않고 재시도 반복)
 # ════════════════════════════════════════════════════════════════════════════
 
-# ── StorageClass ─────────────────────────────────────────────────────────────
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: nfs-stock
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-provisioner: k8s-sigs.io/nfs-subdir-external-provisioner
-parameters:
-  server: "10.0.2.105"
-  path: "/data/nfs"
-  onDelete: retain
-  archiveOnDelete: "false"
-reclaimPolicy: Retain
-volumeBindingMode: Immediate
-allowVolumeExpansion: true
-mountOptions:
-  - noresvport
-  - vers=4.1
-  - timeo=30
-  - retrans=3
-
----
 # ── PV: TimescaleDB ──────────────────────────────────────────────────────────
 # PVC: timescaledb-data-timescaledb-0 (StatefulSet 자동 생성)
 apiVersion: v1
@@ -62,10 +36,6 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
-  mountOptions:
-    - vers=4.1
-    - timeo=30
-    - retrans=3
   claimRef:
     name: timescaledb-data-timescaledb-0
     namespace: stock
@@ -90,10 +60,6 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
-  mountOptions:
-    - vers=4.1
-    - timeo=30
-    - retrans=3
   claimRef:
     name: kafka-data-kafka-0
     namespace: stock
@@ -118,10 +84,6 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
-  mountOptions:
-    - vers=4.1
-    - timeo=30
-    - retrans=3
   claimRef:
     name: kafka-data-kafka-1
     namespace: stock
@@ -146,10 +108,6 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
-  mountOptions:
-    - vers=4.1
-    - timeo=30
-    - retrans=3
   claimRef:
     name: kafka-data-kafka-2
     namespace: stock
@@ -173,10 +131,6 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
-  mountOptions:
-    - vers=4.1
-    - timeo=30
-    - retrans=3
   claimRef:
     name: zookeeper-data-zookeeper-0
     namespace: stock
@@ -200,10 +154,6 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
-  mountOptions:
-    - vers=4.1
-    - timeo=30
-    - retrans=3
   claimRef:
     name: zookeeper-log-zookeeper-0
     namespace: stock
@@ -227,10 +177,6 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
-  mountOptions:
-    - vers=4.1
-    - timeo=30
-    - retrans=3
   claimRef:
     name: redis-pvc
     namespace: stock

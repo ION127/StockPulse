@@ -29,9 +29,6 @@ spec:
           server: "10.0.2.105"
           # TODO: 실제 NFS 공유 경로로 교체
           path: "/data/nfs"
-          mountOptions:
-            - vers=4.1
-
         storageClass:
           name: nfs-stock
           defaultClass: true       # 기본 StorageClass로 등록
