@@ -63,7 +63,6 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
   mountOptions:
-    - noresvport
     - vers=4.1
     - timeo=30
     - retrans=3
@@ -92,7 +91,6 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
   mountOptions:
-    - noresvport
     - vers=4.1
     - timeo=30
     - retrans=3
@@ -121,7 +119,6 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
   mountOptions:
-    - noresvport
     - vers=4.1
     - timeo=30
     - retrans=3
@@ -150,7 +147,6 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
   mountOptions:
-    - noresvport
     - vers=4.1
     - timeo=30
     - retrans=3
@@ -178,7 +174,6 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
   mountOptions:
-    - noresvport
     - vers=4.1
     - timeo=30
     - retrans=3
@@ -206,7 +201,6 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
   mountOptions:
-    - noresvport
     - vers=4.1
     - timeo=30
     - retrans=3
@@ -234,7 +228,6 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
   mountOptions:
-    - noresvport
     - vers=4.1
     - timeo=30
     - retrans=3
