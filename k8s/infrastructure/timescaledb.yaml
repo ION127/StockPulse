@@ -59,7 +59,7 @@ spec:
 
       containers:
         - name: timescaledb
-          image: timescale/timescaledb:2.15.3-pg15
+          image: timescale/timescaledb:2.25.2-pg15
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5432
