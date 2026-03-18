@@ -37,7 +37,7 @@ spec:
       containers:
         - name: api
           # CI/CD 파이프라인에서 SHORT_SHA로 자동 업데이트됨
-          image: 10.0.2.105/stock/api:b7d3c3e
+          image: 10.0.2.105/stock/api:213e52e
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
