@@ -1,54 +1,49 @@
 ---
+# ════════════════════════════════════════════════════════════════════════════
 # NFS 기반 StorageClass + PersistentVolume 설정
 #
-# 사전 조건: NFS 서버가 준비되어 있어야 합니다.
-# NFS 서버 설치 (Ubuntu 예시):
-#   sudo apt install nfs-kernel-server
-#   sudo mkdir -p /data/nfs/{timescaledb,kafka-0,kafka-1,kafka-2,redis,zookeeper}
-#   sudo chown -R nobody:nogroup /data/nfs
+# NFS 서버 초기 설정 (infra VM: 10.0.2.105) — 최초 1회만 실행:
+#
+#   sudo apt install -y nfs-kernel-server
+#   sudo mkdir -p /data/nfs/{timescaledb,kafka-0,kafka-1,kafka-2,zookeeper-data,zookeeper-log,redis}
+#   sudo chmod 777 /data/nfs/{timescaledb,kafka-0,kafka-1,kafka-2,zookeeper-data,zookeeper-log,redis}
 #   echo "/data/nfs *(rw,sync,no_subtree_check,no_root_squash)" | sudo tee -a /etc/exports
 #   sudo exportfs -ra
-#   sudo systemctl restart nfs-kernel-server
+#   sudo systemctl enable --now nfs-kernel-server
 #
-# TODO: 아래 NFS_SERVER_IP와 경로를 실제 환경에 맞게 수정하세요.
-#   NFS 서버 IP 예시: 10.0.2.105  (VM 호스트 또는 NFS 전용 서버)
-#   NFS 경로 예시:    /data/nfs
+# 각 K8s 노드에서 (최초 1회):
+#   sudo apt install -y nfs-common
+#
+# PV-PVC 바인딩 원칙:
+#   claimRef를 명시해 Kubernetes가 임의 바인딩하는 것을 방지
+# ════════════════════════════════════════════════════════════════════════════
 
-# ── StorageClass ────────────────────────────────────────────────────────
-# nfs-subdir-external-provisioner가 설치된 경우 동적 프로비저닝 가능
-# (argocd/nfs-provisioner.yaml 으로 설치)
-# 정적 PV를 직접 쓰는 경우에는 아래 PV/PVC 섹션만 사용하면 됩니다.
-
+# ── StorageClass ─────────────────────────────────────────────────────────────
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: nfs-stock
   annotations:
-    storageclass.kubernetes.io/is-default-class: "true"  # 기본 StorageClass로 설정
+    storageclass.kubernetes.io/is-default-class: "true"
 provisioner: k8s-sigs.io/nfs-subdir-external-provisioner
 parameters:
-  # TODO: 실제 NFS 서버 IP로 교체
   server: "10.0.2.105"
-  # TODO: 실제 NFS 공유 경로로 교체
   path: "/data/nfs"
-  onDelete: retain      # PVC 삭제 시 NFS 디렉토리 보존 (데이터 안전)
+  onDelete: retain
   archiveOnDelete: "false"
 reclaimPolicy: Retain
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
 
 ---
-# ── 정적 PV: TimescaleDB ────────────────────────────────────────────────
-# nfs-subdir-external-provisioner 없이 NFS PV를 직접 쓸 때 사용
-# (provisioner 사용 시 이 섹션 불필요)
-
+# ── PV: TimescaleDB ──────────────────────────────────────────────────────────
+# PVC: timescaledb-data-timescaledb-0 (StatefulSet 자동 생성)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: pv-timescaledb
   labels:
     app: timescaledb
-    type: nfs
 spec:
   capacity:
     storage: 80Gi
@@ -56,15 +51,16 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
+  claimRef:
+    name: timescaledb-data-timescaledb-0
+    namespace: stock
   nfs:
-    # TODO: 실제 NFS 서버 IP로 교체
     server: "10.0.2.105"
-    # TODO: 실제 NFS 경로로 교체
     path: "/data/nfs/timescaledb"
 
 ---
-# ── 정적 PV: Kafka 브로커 0 ─────────────────────────────────────────────
-
+# ── PV: Kafka 브로커 0 ───────────────────────────────────────────────────────
+# PVC: kafka-data-kafka-0 (StatefulSet 자동 생성)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -72,7 +68,6 @@ metadata:
   labels:
     app: kafka
     kafka-broker: "0"
-    type: nfs
 spec:
   capacity:
     storage: 20Gi
@@ -80,13 +75,16 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
+  claimRef:
+    name: kafka-data-kafka-0
+    namespace: stock
   nfs:
     server: "10.0.2.105"
     path: "/data/nfs/kafka-0"
 
 ---
-# ── 정적 PV: Kafka 브로커 1 ─────────────────────────────────────────────
-
+# ── PV: Kafka 브로커 1 ───────────────────────────────────────────────────────
+# PVC: kafka-data-kafka-1 (StatefulSet 자동 생성)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -94,7 +92,6 @@ metadata:
   labels:
     app: kafka
     kafka-broker: "1"
-    type: nfs
 spec:
   capacity:
     storage: 20Gi
@@ -102,13 +99,16 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
+  claimRef:
+    name: kafka-data-kafka-1
+    namespace: stock
   nfs:
     server: "10.0.2.105"
     path: "/data/nfs/kafka-1"
 
 ---
-# ── 정적 PV: Kafka 브로커 2 ─────────────────────────────────────────────
-
+# ── PV: Kafka 브로커 2 ───────────────────────────────────────────────────────
+# PVC: kafka-data-kafka-2 (StatefulSet 자동 생성)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -116,7 +116,6 @@ metadata:
   labels:
     app: kafka
     kafka-broker: "2"
-    type: nfs
 spec:
   capacity:
     storage: 20Gi
@@ -124,20 +123,22 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
+  claimRef:
+    name: kafka-data-kafka-2
+    namespace: stock
   nfs:
     server: "10.0.2.105"
     path: "/data/nfs/kafka-2"
 
 ---
-# ── 정적 PV: Zookeeper ──────────────────────────────────────────────────
-
+# ── PV: Zookeeper 데이터 ─────────────────────────────────────────────────────
+# PVC: zookeeper-data-zookeeper-0 (StatefulSet 자동 생성)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: pv-zookeeper
+  name: pv-zookeeper-data
   labels:
     app: zookeeper
-    type: nfs
 spec:
   capacity:
     storage: 5Gi
@@ -145,20 +146,45 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
+  claimRef:
+    name: zookeeper-data-zookeeper-0
+    namespace: stock
   nfs:
     server: "10.0.2.105"
-    path: "/data/nfs/zookeeper"
+    path: "/data/nfs/zookeeper-data"
 
 ---
-# ── 정적 PV: Redis ──────────────────────────────────────────────────────
+# ── PV: Zookeeper 로그 ───────────────────────────────────────────────────────
+# PVC: zookeeper-log-zookeeper-0 (StatefulSet 자동 생성)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-zookeeper-log
+  labels:
+    app: zookeeper
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-stock
+  claimRef:
+    name: zookeeper-log-zookeeper-0
+    namespace: stock
+  nfs:
+    server: "10.0.2.105"
+    path: "/data/nfs/zookeeper-log"
 
+---
+# ── PV: Redis ────────────────────────────────────────────────────────────────
+# PVC: redis-pvc (아래에서 직접 정의)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: pv-redis
   labels:
     app: redis
-    type: nfs
 spec:
   capacity:
     storage: 5Gi
@@ -166,14 +192,16 @@ spec:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: nfs-stock
+  claimRef:
+    name: redis-pvc
+    namespace: stock
   nfs:
     server: "10.0.2.105"
     path: "/data/nfs/redis"
 
 ---
-# ── 정적 PVC: Redis ─────────────────────────────────────────────────────
-# StatefulSet이 아닌 Deployment이므로 PVC를 별도로 정의
-
+# ── PVC: Redis ───────────────────────────────────────────────────────────────
+# Redis는 Deployment라 StatefulSet처럼 PVC를 자동 생성하지 않으므로 직접 정의
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
