@@ -107,7 +107,7 @@ spec:
             # JVM 힙 크기 고정 — 미설정 시 limit(2Gi) 기준으로 자동 설정되어
             # 브로커 3개 합산 최대 6Gi 소비 → 2코어 8GB 노드에서 OOMKill 위험
             - name: KAFKA_HEAP_OPTS
-              value: "-Xmx512m -Xms256m"
+              value: "-Xmx256m -Xms128m"
 
             # ZooKeeper 연결
             - name: KAFKA_ZOOKEEPER_CONNECT
@@ -183,10 +183,10 @@ spec:
           resources:
             requests:
               cpu: "250m"
-              memory: "512Mi"
+              memory: "384Mi"
             limits:
               cpu: "1000m"
-              memory: "1Gi"   # 힙 512m 고정 → 1Gi limit으로 충분
+              memory: "768Mi"  # 힙 256m + JVM 오버헤드 고려
 
           volumeMounts:
             - name: kafka-data
