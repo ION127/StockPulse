@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harbor-cert-config
+  namespace: stock
+data:
+  # Harbor 자체 서명 인증서
+  harbor.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIFHDCCAwSgAwIBAgIUS12caH33QVyes9YSw00ia3pcqigwDQYJKoZIhvcNAQEL
+    BQAwFTETMBEGA1UEAwwKMTAuMC4yLjEwNTAeFw0yNjAzMTgwMTQ0MDJaFw0yNzAz
+    MTgwMTQ0MDJaMBUxEzARBgNVBAMMCjEwLjAuMi4xMDUwggIiMA0GCSqGSIb3DQEB
+    AQUAA4ICDwAwggIKAoICAQC4o43ZJkBUpQVA7EFx+ewzNoo+TW8O6iTjzCFsti1N
+    sdtYvlHHb0nRr4ya8jk5hQ8KGyLlsbUJCPIpzzME/gdLADaMTIgdys+oG7fvl1/q
+    Q1JZtqQJ3SrAn/Sey8GVPKN9EJaG94haPpNifJqEgFp4Syque2blSqQPNYaqx3rj
+    ZFKlhbrEP63RYaRFJ0TbEqKVs6HEiuS8AcnbZ81dvgx8D6hCwDwzIkmZoNv5MxRr
+    r+jGvFjyYbdshEFxX9lCVDBep41pgJ2RwY/G2YvHDrqJMLGlFvTBVtzIEAHup6fl
+    MaA+WCzeFEhcxI8Xg3+MArn6BvDgOSEOCscjqzZlKVrJbWXIaDtNhWfb72Rf5VKO
+    4SzL/ORI61RuFjwok6kA0DOvIOclCUJyksRAG1xdMlAOEMhkUwg/dvBshyvVOvUd
+    2gabg9nf9eFqPK5qVFJcQbNceYqHLFboE7afLFIK2SfGhIDUZacgciQKE2oPUzf+
+    ync3VktbYCCwsNPf6ouyuTV9OXBLQzil51orv+AvvjCMiujnU3PDJFYnQq6vpFFh
+    QGjUD3ZACDAx4A04q/YJ8KDnJ/Tumi6PafuUGVdZDWV9J7e2MP4CwKRc88cBj0bb
+    v3W5y003qq8UASeAxqjNIVkLgbhDH1mAlxVWGbXdlE0ERXZDjN5bOFfOq+jKtbPo
+    HwIDAQABo2QwYjAdBgNVHQ4EFgQU61l6L2stId+r873OQybHBqGcFTcwHwYDVR0j
+    BBgwFoAU61l6L2stId+r873OQybHBqGcFTcwDwYDVR0TAQH/BAUwAwEB/zAPBgNV
+    HREECDAGhwQKAAJpMA0GCSqGSIb3DQEBCwUAA4ICAQCS+eMBNp9msiIfs56XiSgB
+    7205l6Lw0P1VE+3KKLr62kD3+px36DUGbE2DeoH9WAs2X2ccAtJ9AsChQVZ5A39l
+    kGgwZAepG1aTuLHpFFD+TEXwESTtL2Qo6oAjZTQdBxDgJ5TFaluTOxxGRMnbr4vn
+    qvpUksizRjNqg0AD6MGd/XIlmPyqYWijhyn54xc4zq0IL4YtNz6c6UPYkQZs7bAc
+    aCG2HUT0w+GdmGu1tKnbWE0dSWHtZnZj7I0Bw5cLcbQtABPsRYCulsIXZKZ40SCA
+    h4LiUOfaPKY4IpjjjYh2hR4/L6ER2xg57IBFVWi28WnOvHmii7DzHlLHTbnZl9G+
+    Q0QruaZoVO6WbQEiKfJfKpUiWuiTXQcMZBUxcRfp8xMHkBqYEkpAIqUOuLHCl3Pn
+    qIFUjIwy2oR7GnE7YL619yPoW/X5PRNTSKMYUnwR/bKM4QKGF1fybzSfHeRrx0Im
+    prEM/H5AV9T9BtMEk2TfKbRqhJtKMEcgc9W+TmPbQBIRFVF+PGicQJ9zKKis/8l/
+    BagICzdPVV862kW16FVU74WjV1tvJsmT16YvU6ZWxUnREo9p8VXo05Mg4BanmiAY
+    3tAEv9SNzC1p6arWYLCmLQxf4p/xCgGtQVFNSyl29GHshTAi3uk9Q2XFY18ExNeH
+    7yWxU8qiPJrEnvFMakAwFw==
+    -----END CERTIFICATE-----
+  hosts.toml: |
+    server = "https://10.0.2.105"
+
+    [host."https://10.0.2.105"]
+      ca = "/etc/containerd/certs.d/10.0.2.105/ca.crt"
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: harbor-cert-installer
+  namespace: stock
+  labels:
+    app: harbor-cert-installer
+spec:
+  selector:
+    matchLabels:
+      app: harbor-cert-installer
+  template:
+    metadata:
+      labels:
+        app: harbor-cert-installer
+    spec:
+      hostPID: true
+      hostIPC: true
+      tolerations:
+        # control-plane 노드에도 적용
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: install-cert
+          image: alpine:3.19
+          securityContext:
+            privileged: true
+          command:
+            - sh
+            - -c
+            - |
+              # containerd certs.d 디렉토리 생성
+              mkdir -p /host/etc/containerd/certs.d/10.0.2.105
+
+              # Harbor 인증서 복사
+              cp /config/harbor.crt /host/etc/containerd/certs.d/10.0.2.105/ca.crt
+
+              # hosts.toml 복사
+              cp /config/hosts.toml /host/etc/containerd/certs.d/10.0.2.105/hosts.toml
+
+              # containerd config.toml의 config_path 업데이트
+              if grep -q "config_path = ''" /host/etc/containerd/config.toml; then
+                sed -i "s|config_path = ''|config_path = '/etc/containerd/certs.d'|g" /host/etc/containerd/config.toml
+                echo "containerd config_path updated"
+              else
+                echo "config_path already set"
+              fi
+
+              # containerd 재시작 (nsenter로 host PID namespace에서 실행)
+              nsenter -t 1 -m -u -i -n -p -- systemctl restart containerd
+              echo "containerd restarted"
+          volumeMounts:
+            - name: host-etc
+              mountPath: /host/etc
+            - name: cert-config
+              mountPath: /config
+      containers:
+        - name: pause
+          image: gcr.io/google-containers/pause:3.2
+          resources:
+            requests:
+              cpu: "1m"
+              memory: "8Mi"
+            limits:
+              cpu: "10m"
+              memory: "16Mi"
+      volumes:
+        - name: host-etc
+          hostPath:
+            path: /etc
+        - name: cert-config
+          configMap:
+            name: harbor-cert-config
