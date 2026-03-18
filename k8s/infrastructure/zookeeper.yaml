@@ -87,22 +87,16 @@ spec:
           # 헬스체크
           # ─────────────────────────────────────────────
           livenessProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - "echo ruok | nc localhost 2181 | grep imok"
+            tcpSocket:
+              port: 2181
             initialDelaySeconds: 30
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
 
           readinessProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - "echo ruok | nc localhost 2181 | grep imok"
+            tcpSocket:
+              port: 2181
             initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 5
