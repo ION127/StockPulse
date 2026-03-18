@@ -232,6 +232,19 @@ app.include_router(jobs.router)
 from routers.jobs import set_broadcast  # noqa: E402
 set_broadcast(ws_manager.broadcast)
 
+# /api/v1/ → /api/v2/ 경로 별칭 (프론트엔드 v2 호환)
+from fastapi.routing import APIRoute  # noqa: E402
+for _route in list(app.routes):
+    if isinstance(_route, APIRoute) and "/api/v1/" in _route.path:
+        _v2_path = _route.path.replace("/api/v1/", "/api/v2/", 1)
+        app.add_api_route(
+            _v2_path,
+            _route.endpoint,
+            methods=list(_route.methods),
+            response_model=_route.response_model,
+            tags=_route.tags,
+        )
+
 
 @app.websocket("/ws/live")
 async def websocket_endpoint(ws: WebSocket):
