@@ -27,7 +27,7 @@ spec:
       containers:
         - name: ai-analyzer
           # CI/CD 파이프라인에서 SHORT_SHA로 자동 업데이트됨
-          image: 10.0.2.105/stock/ai-analyzer:latest
+          image: 10.0.2.105/stock/ai-analyzer:9a16b6f
           imagePullPolicy: Always
 
           envFrom:
