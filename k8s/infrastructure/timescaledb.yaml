@@ -46,6 +46,17 @@ spec:
       # DB Pod가 삭제되더라도 데이터 손실을 막기 위해 terminationGracePeriodSeconds 설정
       terminationGracePeriodSeconds: 60
 
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-tier
+                    operator: In
+                    values:
+                      - heavy
+
       containers:
         - name: timescaledb
           image: timescale/timescaledb:latest-pg15
@@ -109,4 +120,4 @@ spec:
         storageClassName: nfs-stock   # k8s/infrastructure/nfs-storage.yaml 에서 정의
         resources:
           requests:
-            storage: 20Gi
+            storage: 80Gi

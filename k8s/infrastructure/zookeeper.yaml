@@ -44,6 +44,17 @@ spec:
         app: zookeeper
         app.kubernetes.io/name: zookeeper
     spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-tier
+                    operator: In
+                    values:
+                      - light
+
       containers:
         - name: zookeeper
           image: confluentinc/cp-zookeeper:7.6.0

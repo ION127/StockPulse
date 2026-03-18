@@ -68,6 +68,17 @@ spec:
         app: kafka
         app.kubernetes.io/name: kafka
     spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-tier
+                    operator: In
+                    values:
+                      - heavy
+
       containers:
         - name: kafka
           image: confluentinc/cp-kafka:7.6.0
@@ -127,9 +138,15 @@ spec:
             - name: KAFKA_REPLICA_FETCH_MAX_BYTES
               value: "10485760"
 
-            # 로그 보관 기간
+            # 로그 보관 기간: 7일 (시간 기준)
             - name: KAFKA_LOG_RETENTION_HOURS
-              value: "168"  # 7일
+              value: "168"
+            # 로그 보관 용량: 브로커당 15Gi (20Gi PV 중 OS/오버헤드 5Gi 제외)
+            - name: KAFKA_LOG_RETENTION_BYTES
+              value: "16106127360"  # 15 * 1024^3
+            # 로그 세그먼트 크기: 512MB (삭제 단위를 작게 유지)
+            - name: KAFKA_LOG_SEGMENT_BYTES
+              value: "536870912"
 
           # ─────────────────────────────────────────────
           # 헬스체크

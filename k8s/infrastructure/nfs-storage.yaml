@@ -51,7 +51,7 @@ metadata:
     type: nfs
 spec:
   capacity:
-    storage: 20Gi
+    storage: 80Gi
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain

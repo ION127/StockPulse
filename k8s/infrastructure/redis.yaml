@@ -42,6 +42,17 @@ spec:
         app: redis
         app.kubernetes.io/name: redis
     spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-tier
+                    operator: In
+                    values:
+                      - light
+
       containers:
         - name: redis
           image: redis:7-alpine

@@ -1,0 +1,475 @@
+---
+# ════════════════════════════════════════════════════════════════════════════
+# 데이터 보관 정책 (Data Retention Policy)
+#
+# 저장소별 보관 전략:
+#   TimescaleDB  - 원시 시세 데이터 30일, 뉴스/AI분석 90일, 자동 압축(1일 이상)
+#   Kafka        - kafka.yaml에서 RETENTION_HOURS=168(7일), 브로커당 15GiB 상한
+#   Redis        - 인메모리 LRU, AOF 자동 재작성(AOF크기 2배시)
+#   NFS          - 매주 오래된 임시파일 정리, 디스크 사용률 경보
+#
+# 실행 전 필수 조건:
+#   kubectl label node worker1 node-tier=heavy
+#   kubectl label node worker2 node-tier=light
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── 1. TimescaleDB 보관 정책 초기화 Job (최초 1회 실행) ──────────────────────
+# TimescaleDB의 네이티브 retention policy는 청크(chunk) 단위로 삭제하므로
+# 단순 DELETE보다 10~100배 빠름. 이 Job은 배포 후 최초 1회만 실행됩니다.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: timescaledb-retention-init
+  namespace: stock
+  labels:
+    app: timescaledb-retention-init
+    app.kubernetes.io/component: maintenance
+    app.kubernetes.io/part-of: stock-platform
+  annotations:
+    # ArgoCD가 재배포 시 중복 실행하지 않도록 hook으로 처리
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  # 실패 시 최대 3회 재시도 (DB 아직 준비 안된 경우 대비)
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-tier
+                    operator: In
+                    values:
+                      - heavy
+
+      containers:
+        - name: retention-init
+          image: timescale/timescaledb:latest-pg15
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: stock-db-secret
+                  key: POSTGRES_PASSWORD
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: stock-db-secret
+                  key: POSTGRES_USER
+            - name: PGDATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: stock-db-secret
+                  key: POSTGRES_DB
+
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "[$(date)] TimescaleDB 보관 정책 초기화 시작"
+
+              psql -h timescaledb-service -U "$PGUSER" -d "$PGDATABASE" <<'SQL'
+
+              -- ── 압축 정책: 1일 이상 된 청크 자동 압축 ─────────────────────
+              -- hypertable이 존재할 때만 적용 (없으면 SKIP)
+              DO $$
+              DECLARE
+                tbl TEXT;
+              BEGIN
+                FOR tbl IN
+                  SELECT hypertable_name
+                  FROM   timescaledb_information.hypertables
+                  WHERE  hypertable_schema = 'public'
+                LOOP
+                  BEGIN
+                    -- 압축 활성화
+                    EXECUTE format(
+                      'ALTER TABLE %I SET (timescaledb.compress = true)', tbl
+                    );
+                    -- 1일 이상 청크 자동 압축
+                    PERFORM add_compression_policy(tbl::regclass, INTERVAL '1 day',
+                            if_not_exists => true);
+                    RAISE NOTICE '압축 정책 적용: %', tbl;
+                  EXCEPTION WHEN OTHERS THEN
+                    RAISE NOTICE '압축 정책 SKIP (% : %)', tbl, SQLERRM;
+                  END;
+                END LOOP;
+              END $$;
+
+              -- ── 보관 기간 정책 ──────────────────────────────────────────────
+              -- stock_prices 관련 테이블 (시세): 30일 보관
+              DO $$
+              DECLARE
+                tbl TEXT;
+              BEGIN
+                FOR tbl IN
+                  SELECT hypertable_name
+                  FROM   timescaledb_information.hypertables
+                  WHERE  hypertable_schema = 'public'
+                    AND  hypertable_name IN (
+                           'stock_prices', 'ohlcv', 'stock_data',
+                           'price_ticks', 'market_data'
+                         )
+                LOOP
+                  PERFORM add_retention_policy(tbl::regclass, INTERVAL '30 days',
+                          if_not_exists => true);
+                  RAISE NOTICE '시세 보관 정책(30일) 적용: %', tbl;
+                END LOOP;
+              END $$;
+
+              -- 뉴스/AI 분석 테이블: 90일 보관
+              DO $$
+              DECLARE
+                tbl TEXT;
+              BEGIN
+                FOR tbl IN
+                  SELECT hypertable_name
+                  FROM   timescaledb_information.hypertables
+                  WHERE  hypertable_schema = 'public'
+                    AND  hypertable_name IN (
+                           'news_articles', 'ai_analysis', 'analysis_results',
+                           'anomaly_events', 'notifications'
+                         )
+                LOOP
+                  PERFORM add_retention_policy(tbl::regclass, INTERVAL '90 days',
+                          if_not_exists => true);
+                  RAISE NOTICE '뉴스/AI 보관 정책(90일) 적용: %', tbl;
+                END LOOP;
+              END $$;
+
+              -- ── 현재 등록된 정책 확인 ──────────────────────────────────────
+              SELECT application_name, schedule_interval, config
+              FROM   timescaledb_information.jobs
+              WHERE  proc_name IN (
+                       'policy_retention', 'policy_compression'
+                     )
+              ORDER BY application_name;
+
+              SQL
+
+              echo "[$(date)] 초기화 완료"
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+---
+# ── 2. TimescaleDB 일간 유지보수 CronJob ─────────────────────────────────────
+# 매일 새벽 2:00 KST(17:00 UTC) 실행
+# - 보관 정책 누락분 수동 DROP CHUNKS
+# - VACUUM ANALYZE (통계 갱신)
+# - 디스크 사용량 로그 출력
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: timescaledb-maintenance
+  namespace: stock
+  labels:
+    app: timescaledb-maintenance
+    app.kubernetes.io/component: maintenance
+    app.kubernetes.io/part-of: stock-platform
+spec:
+  # 매일 새벽 2:00 KST = 17:00 UTC
+  schedule: "0 17 * * *"
+  timeZone: "Asia/Seoul"
+  # 이전 Job이 아직 실행 중이면 건너뜀
+  concurrencyPolicy: Forbid
+  # 완료된 Job 1개, 실패한 Job 3개 보존
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: node-tier
+                        operator: In
+                        values:
+                          - heavy
+
+          containers:
+            - name: maintenance
+              image: timescale/timescaledb:latest-pg15
+              imagePullPolicy: IfNotPresent
+
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: stock-db-secret
+                      key: POSTGRES_PASSWORD
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: stock-db-secret
+                      key: POSTGRES_USER
+                - name: PGDATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: stock-db-secret
+                      key: POSTGRES_DB
+
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  echo "[$(date)] 일간 유지보수 시작"
+
+                  psql -h timescaledb-service -U "$PGUSER" -d "$PGDATABASE" <<'SQL'
+
+                  -- ── 보관 정책 미설정 테이블: 수동 DROP CHUNKS ──────────────
+                  -- (초기화 Job 실패 등으로 정책이 없을 경우 안전망)
+                  DO $$
+                  DECLARE
+                    tbl TEXT;
+                  BEGIN
+                    FOR tbl IN
+                      SELECT h.hypertable_name
+                      FROM   timescaledb_information.hypertables h
+                      LEFT JOIN timescaledb_information.jobs j
+                        ON  j.hypertable_name = h.hypertable_name
+                        AND j.proc_name = 'policy_retention'
+                      WHERE h.hypertable_schema = 'public'
+                        AND j.job_id IS NULL  -- 보관 정책 없는 테이블만
+                    LOOP
+                      -- 90일 초과 청크 삭제 (안전한 기본값)
+                      PERFORM drop_chunks(tbl::regclass, INTERVAL '90 days');
+                      RAISE NOTICE '수동 청크 삭제(90일): %', tbl;
+                    END LOOP;
+                  END $$;
+
+                  -- ── VACUUM ANALYZE: 통계 갱신 및 dead tuple 정리 ───────────
+                  DO $$
+                  DECLARE
+                    tbl TEXT;
+                  BEGIN
+                    FOR tbl IN
+                      SELECT hypertable_name
+                      FROM   timescaledb_information.hypertables
+                      WHERE  hypertable_schema = 'public'
+                    LOOP
+                      EXECUTE format('VACUUM ANALYZE %I', tbl);
+                      RAISE NOTICE 'VACUUM ANALYZE: %', tbl;
+                    END LOOP;
+                  END $$;
+
+                  -- ── 디스크 사용량 보고 ──────────────────────────────────────
+                  SELECT
+                    hypertable_name                                      AS "테이블",
+                    pg_size_pretty(before_compression_total_bytes)       AS "압축 전",
+                    pg_size_pretty(after_compression_total_bytes)        AS "압축 후",
+                    ROUND(
+                      100.0 * (1 - after_compression_total_bytes::numeric
+                               / NULLIF(before_compression_total_bytes, 0)),
+                      1
+                    ) || '%'                                             AS "압축률",
+                    pg_size_pretty(total_bytes)                          AS "총 크기"
+                  FROM   timescaledb_information.hypertable_compression_stats
+                  ORDER  BY total_bytes DESC NULLS LAST;
+
+                  -- ── 청크 수 요약 ────────────────────────────────────────────
+                  SELECT
+                    hypertable_name                 AS "테이블",
+                    COUNT(*)                        AS "청크 수",
+                    MIN(range_start)::date          AS "가장 오래된 데이터",
+                    MAX(range_end)::date            AS "가장 최근 데이터"
+                  FROM   timescaledb_information.chunks
+                  GROUP  BY hypertable_name
+                  ORDER  BY hypertable_name;
+
+                  SQL
+
+                  echo "[$(date)] 일간 유지보수 완료"
+
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "256Mi"
+
+---
+# ── 3. NFS 디스크 사용량 모니터링 CronJob ────────────────────────────────────
+# 매주 월요일 새벽 3:00 KST(18:00 UTC 일요일) 실행
+# - NFS 마운트 디렉토리별 사용량 출력
+# - 80% 초과 시 경고 로그 (Notifier 연동 예정)
+# - 오래된 임시파일(7일 이상 .tmp/.bak) 정리
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nfs-disk-monitor
+  namespace: stock
+  labels:
+    app: nfs-disk-monitor
+    app.kubernetes.io/component: maintenance
+    app.kubernetes.io/part-of: stock-platform
+spec:
+  # 매주 월요일 새벽 3:00 KST = 일요일 18:00 UTC
+  schedule: "0 18 * * 0"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: OnFailure
+
+          containers:
+            - name: disk-monitor
+              image: alpine:3.19
+              imagePullPolicy: IfNotPresent
+
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  echo "========================================"
+                  echo "[$(date)] NFS 디스크 사용량 점검"
+                  echo "========================================"
+
+                  # 마운트 포인트별 사용량
+                  echo "--- 디렉토리별 사용량 ---"
+                  du -sh /nfs-data/* 2>/dev/null | sort -rh || echo "(데이터 없음)"
+
+                  echo ""
+                  echo "--- 전체 NFS 볼륨 사용률 ---"
+                  df -h /nfs-data
+
+                  # 사용률 추출 후 80% 초과 경고
+                  USAGE=$(df /nfs-data | awk 'NR==2{gsub(/%/,""); print $5}')
+                  echo ""
+                  if [ "$USAGE" -ge 80 ]; then
+                    echo "⚠ 경고: NFS 사용률 ${USAGE}% — 80% 초과!"
+                    echo "  TimescaleDB 보관 기간 단축 또는 NFS 용량 확장 필요"
+                    echo "  조치 방법:"
+                    echo "    1. kubectl exec -it timescaledb-0 -- psql ... -c \"SELECT drop_chunks('stock_prices', INTERVAL '15 days');\""
+                    echo "    2. NFS 서버에서 sudo lvextend 로 볼륨 확장"
+                  else
+                    echo "✓ 정상: NFS 사용률 ${USAGE}%"
+                  fi
+
+                  echo ""
+                  echo "--- 오래된 임시파일 정리 (.tmp/.bak, 7일 이상) ---"
+                  find /nfs-data -name "*.tmp" -o -name "*.bak" \
+                    | xargs -I{} find {} -mtime +7 -delete -print 2>/dev/null \
+                    || echo "(정리할 파일 없음)"
+
+                  echo "[$(date)] 점검 완료"
+
+              volumeMounts:
+                - name: nfs-data
+                  mountPath: /nfs-data
+
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "32Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "64Mi"
+
+          volumes:
+            - name: nfs-data
+              nfs:
+                server: "10.0.2.105"
+                path: "/data/nfs"
+
+---
+# ── 4. Redis AOF 최적화 CronJob ───────────────────────────────────────────────
+# Redis는 AOF 자동 재작성(auto-aof-rewrite) 기능이 있지만
+# 매주 일요일 새벽 1:00 KST에 강제 BGREWRITEAOF를 실행해 파일 크기를 최소화
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redis-aof-rewrite
+  namespace: stock
+  labels:
+    app: redis-aof-rewrite
+    app.kubernetes.io/component: maintenance
+    app.kubernetes.io/part-of: stock-platform
+spec:
+  # 매주 일요일 새벽 1:00 KST = 토요일 16:00 UTC
+  schedule: "0 16 * * 6"
+  timeZone: "Asia/Seoul"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: node-tier
+                        operator: In
+                        values:
+                          - light
+
+          containers:
+            - name: redis-rewrite
+              image: redis:7-alpine
+              imagePullPolicy: IfNotPresent
+
+              command:
+                - sh
+                - -c
+                - |
+                  echo "[$(date)] Redis AOF 재작성 시작"
+
+                  # AOF 파일 크기 확인
+                  INFO=$(redis-cli -h redis info persistence)
+                  echo "$INFO" | grep -E "aof_current_size|aof_base_size|aof_rewrite_in_progress"
+
+                  # 백그라운드 AOF 재작성 요청
+                  redis-cli -h redis BGREWRITEAOF
+
+                  echo "[$(date)] BGREWRITEAOF 요청 완료 (백그라운드에서 진행됨)"
+
+                  # 메모리 사용량 확인
+                  echo "--- Redis 메모리 현황 ---"
+                  redis-cli -h redis info memory | grep -E "used_memory_human|maxmemory_human|mem_fragmentation_ratio"
+
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "32Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "64Mi"
