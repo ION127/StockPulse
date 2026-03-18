@@ -97,7 +97,7 @@ class KisAuth:
 
     async def get_access_token(self) -> str:
         """액세스 토큰 반환 (만료 시 자동 갱신)."""
-        if datetime.now() < self._token_expires - timedelta(minutes=10):
+        if self._token and self._token_expires > datetime.min and datetime.now() < self._token_expires - timedelta(minutes=10):
             return self._token
 
         url  = f"{REST_BASE}/oauth2/tokenP"
