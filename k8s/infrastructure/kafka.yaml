@@ -68,6 +68,10 @@ spec:
         app: kafka
         app.kubernetes.io/name: kafka
     spec:
+      # K8s가 'kafka' 서비스의 환경변수(KAFKA_PORT 등)를 자동 주입하면
+      # Confluent 이미지가 이를 설정값으로 읽어 충돌 → 비활성화 필수
+      enableServiceLinks: false
+
       affinity:
         nodeAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
