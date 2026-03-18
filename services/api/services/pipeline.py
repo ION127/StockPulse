@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 async def run_pipeline(db: AsyncSession, broadcast: Callable,
-                       threshold_pct: float = 8.0, threshold_z: float = 3.0) -> dict:
+                       threshold_pct: float = 3.0, threshold_z: float = 2.0,
+                       kr_threshold_pct: float = 4.0) -> dict:
     repo = AnomalyRepository(db)
     result_summary = {"anomaly_count": 0, "analyzed_count": 0}
     loop = asyncio.get_event_loop()
@@ -31,7 +32,8 @@ async def run_pipeline(db: AsyncSession, broadcast: Callable,
 
     # 2. 이상값 탐지
     all_anomalies = await loop.run_in_executor(
-        None, detect_anomalies, {**us_data, **kr_data}, threshold_pct, threshold_z
+        None, detect_anomalies, {**us_data, **kr_data},
+        threshold_pct, threshold_z, 20, kr_threshold_pct
     )
     recent = [a for a in all_anomalies if a.get("is_recent")]
     if not recent:

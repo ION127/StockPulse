@@ -9,7 +9,10 @@ metadata:
     app.kubernetes.io/component: backend
     app.kubernetes.io/part-of: stock-platform
 spec:
-  replicas: 2
+  # WebSocketManager가 인메모리 연결 목록 관리 → replicas > 1 이면
+  # 다른 Pod가 수신한 Kafka 메시지의 WS 브로드캐스트가 유실됨
+  # Redis pub/sub 도입 전까지 단일 인스턴스 유지
+  replicas: 1
   selector:
     matchLabels:
       app: api

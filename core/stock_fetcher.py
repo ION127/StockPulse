@@ -102,15 +102,21 @@ def fetch_kr_stocks(tickers: list[str], period_days: int = 30) -> dict[str, pd.D
 
 def detect_anomalies(
     stock_data: dict[str, pd.DataFrame],
-    percent_threshold: float = 5.0,
-    zscore_threshold: float = 2.5,
+    percent_threshold: float = 3.0,
+    zscore_threshold: float = 2.0,
     lookback_days: int = 20,
+    kr_percent_threshold: float = 4.0,
 ) -> list[dict]:
     """
     이상값 탐지 (급등/급락)
     두 가지 방법 병행:
     1. 단순 퍼센트 변화율 (당일 기준)
     2. Z-score (최근 N일 기준 통계적 이상값)
+
+    시장별 퍼센트 임계값 구분:
+    - 미국주식/ETF : percent_threshold    (기본 3.0%) — 대형주 일봉 기준
+    - 한국주식/ETF : kr_percent_threshold (기본 4.0%) — 상하한±30%, 변동성 상대적 높음
+    Z-score 임계값은 공통 적용 (각 종목의 자체 변동성 기준으로 정규화되므로)
     """
     anomalies = []
     today = datetime.now().date()
@@ -118,6 +124,10 @@ def detect_anomalies(
     for ticker, df in stock_data.items():
         if df.empty or len(df) < 2:
             continue
+
+        # 한국 종목 여부 판단 (KR: 접두사)
+        is_kr = ticker.startswith("KR:")
+        pct_threshold = kr_percent_threshold if is_kr else percent_threshold
 
         # 일별 수익률 계산
         df = df.copy()
@@ -141,7 +151,7 @@ def detect_anomalies(
             zscore = (ret - mean_return) / std_return if std_return > 0 else 0
 
             # 이상값 판단: 퍼센트 OR Z-score 기준 충족
-            is_anomaly_pct = abs(ret) >= percent_threshold
+            is_anomaly_pct = abs(ret) >= pct_threshold
             is_anomaly_zscore = abs(zscore) >= zscore_threshold
 
             if is_anomaly_pct or is_anomaly_zscore:

@@ -194,7 +194,7 @@ spec:
         name: kafka-data
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: nfs-stock   # k8s/infrastructure/nfs-storage.yaml 에서 정의
+        storageClassName: nfs-stock   # argocd/nfs-provisioner.yaml (Helm 차트)에서 정의
         resources:
           requests:
             storage: 20Gi

@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/component: fetcher
     app.kubernetes.io/part-of: stock-platform
 spec:
-  # 뉴스 수집기는 2개 인스턴스로 운영 (고가용성)
+  # 뉴스 수집기는 단일 인스턴스 (중복 수집 방지)
   replicas: 1
   selector:
     matchLabels:
@@ -48,6 +48,17 @@ spec:
             # NEWS_API_KEY 주입 (stock-api-secrets에 포함)
             - secretRef:
                 name: stock-api-secrets
+
+          # ─────────────────────────────────────────────
+          # 헬스체크 설정
+          # ─────────────────────────────────────────────
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "kill -0 1"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
 
           # ─────────────────────────────────────────────
           # 리소스 제한 설정

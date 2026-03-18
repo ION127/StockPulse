@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/component: detector
     app.kubernetes.io/part-of: stock-platform
 spec:
-  # 이상 탐지 워커는 Kafka 파티션 병렬 처리를 위해 2개 운영
+  # Kafka Consumer 그룹 파티션 분산 처리 — 파티션 수 초과 시 의미 없음
   replicas: 1
   selector:
     matchLabels:
@@ -45,6 +45,17 @@ spec:
           envFrom:
             - configMapRef:
                 name: stock-config
+
+          # ─────────────────────────────────────────────
+          # 헬스체크 설정
+          # ─────────────────────────────────────────────
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "kill -0 1"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
 
           # ─────────────────────────────────────────────
           # 리소스 제한 설정 (이상 탐지 연산으로 CPU 사용 높음)

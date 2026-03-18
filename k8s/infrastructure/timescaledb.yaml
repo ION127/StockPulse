@@ -59,7 +59,7 @@ spec:
 
       containers:
         - name: timescaledb
-          image: timescale/timescaledb:latest-pg15
+          image: timescale/timescaledb:2.15.3-pg15
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5432
@@ -83,8 +83,11 @@ spec:
             failureThreshold: 3
 
           readinessProbe:
-            tcpSocket:
-              port: 5432
+            exec:
+              command:
+                - sh
+                - -c
+                - "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"
             initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 5
@@ -111,7 +114,7 @@ spec:
         name: timescaledb-data
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: nfs-stock   # k8s/infrastructure/nfs-storage.yaml 에서 정의
+        storageClassName: nfs-stock   # argocd/nfs-provisioner.yaml (Helm 차트)에서 정의
         resources:
           requests:
             storage: 80Gi

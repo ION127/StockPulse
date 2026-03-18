@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/component: analyzer
     app.kubernetes.io/part-of: stock-platform
 spec:
-  # AI 분석기는 2개 인스턴스로 운영 (Gemini API 병렬 호출)
+  # AI 분석기는 단일 인스턴스 (Gemini API 과금 중복 방지)
   replicas: 1
   selector:
     matchLabels:
@@ -48,6 +48,17 @@ spec:
             # GEMINI_API_KEY 주입 (stock-api-secrets에 포함)
             - secretRef:
                 name: stock-api-secrets
+
+          # ─────────────────────────────────────────────
+          # 헬스체크 설정
+          # ─────────────────────────────────────────────
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "kill -0 1"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
 
           # ─────────────────────────────────────────────
           # 리소스 제한 설정 (AI API 호출로 메모리 사용 높음)

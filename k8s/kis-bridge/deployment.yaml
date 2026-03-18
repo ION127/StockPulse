@@ -50,6 +50,17 @@ spec:
                 name: stock-kis-secret
 
           # ─────────────────────────────────────────────
+          # 헬스체크 설정
+          # ─────────────────────────────────────────────
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "kill -0 1"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # ─────────────────────────────────────────────
           # 리소스 제한 설정
           # ─────────────────────────────────────────────
           resources:

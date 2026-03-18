@@ -58,8 +58,9 @@ async def scheduled_analysis():
             result = await run_pipeline(
                 db=db,
                 broadcast=ws_manager.broadcast,
-                threshold_pct=float(os.getenv("ANOMALY_THRESHOLD_PERCENT", "8.0")),
-                threshold_z=float(os.getenv("ANOMALY_ZSCORE_THRESHOLD", "3.0")),
+                threshold_pct=float(os.getenv("ANOMALY_THRESHOLD_PERCENT", "3.0")),
+                threshold_z=float(os.getenv("ANOMALY_ZSCORE_THRESHOLD", "2.0")),
+                kr_threshold_pct=float(os.getenv("ANOMALY_KR_THRESHOLD_PERCENT", "4.0")),
             )
         logger.info(f"스케줄 분석 완료: {result}")
     except Exception as e:

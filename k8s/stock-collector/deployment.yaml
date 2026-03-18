@@ -57,13 +57,13 @@ spec:
               cpu: "500m"
               memory: "512Mi"
 
-          # 컨테이너 재시작 정책: 프로세스가 비정상 종료되면 자동 재시작
+          # ─────────────────────────────────────────────
+          # 헬스체크 설정
+          # ─────────────────────────────────────────────
           livenessProbe:
             exec:
-              command:
-                - python
-                - -c
-                - "import sys; sys.exit(0)"
+              command: ["sh", "-c", "kill -0 1"]
             initialDelaySeconds: 30
-            periodSeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
             failureThreshold: 3
