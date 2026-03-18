@@ -38,7 +38,7 @@ jobs:
         with:
           buildkitd-config-inline: |
             [registry."${{ secrets.HARBOR_URL }}"]
-              insecure = true
+              ca=["/usr/local/share/ca-certificates/harbor.crt"]
 
       # ─────────────────────────────────────────────
       # 백엔드 서비스 빌드 (build context: root)
