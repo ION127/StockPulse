@@ -24,12 +24,6 @@ jobs:
       - name: Set short SHA
         run: echo "SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_ENV
 
-      # Harbor CA 인증서를 시스템 신뢰 저장소에 추가
-      - name: Trust Harbor CA cert
-        run: |
-          sudo cp /home/user/certs/harbor.crt /usr/local/share/ca-certificates/harbor.crt
-          sudo update-ca-certificates
-
       # Harbor 로그인
       - name: Log in to Harbor
         uses: docker/login-action@v3
