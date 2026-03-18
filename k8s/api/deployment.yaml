@@ -37,6 +37,32 @@ spec:
       imagePullSecrets:
         - name: harbor-pull-secret
 
+      # TimescaleDB가 완전히 준비될 때까지 API 컨테이너 시작 차단
+      initContainers:
+        - name: wait-for-db
+          image: postgres:15-alpine
+          command:
+            - sh
+            - -c
+            - |
+              echo "TimescaleDB 준비 대기 중..."
+              until pg_isready -h timescaledb-service -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do
+                echo "DB 아직 준비 안 됨, 3초 후 재시도..."
+                sleep 3
+              done
+              echo "DB 준비 완료!"
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: stock-db-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: stock-db-secret
+                  key: POSTGRES_DB
+
       containers:
         - name: api
           # CI/CD 파이프라인에서 SHORT_SHA로 자동 업데이트됨
