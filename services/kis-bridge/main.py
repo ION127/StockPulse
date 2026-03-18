@@ -60,9 +60,9 @@ WS_BATCH_SIZE        = 40  # KIS WebSocket 연결당 최대 구독 종목 수
 # ── KIS API 엔드포인트 ────────────────────────────────────────────────────────
 REST_BASE = "https://openapi.koreainvestment.com:9443"
 WS_URL    = (
-    "wss://openapiwss.kis.uat.koreainvestment.com:21000"
+    "ws://ops.koreainvestment.com:31000"
     if KIS_MOCK else
-    "wss://openapi.koreainvestment.com:21000"
+    "ws://ops.koreainvestment.com:21000"
 )
 TR_ID_REALTIME = "H0STCNS0" if KIS_MOCK else "H0STCNT0"  # 주식 실시간 체결
 

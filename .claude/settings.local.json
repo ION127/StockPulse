@@ -11,7 +11,11 @@
       "Bash(do)",
       "Bash(sed -i 's|harbor\\\\.local|10.0.2.105|g' \"$f\")",
       "Bash(echo \"Updated: $f\")",
-      "Bash(done)"
+      "Bash(done)",
+      "WebSearch",
+      "WebFetch(domain:wikidocs.net)",
+      "WebFetch(domain:securities.koreainvestment.com)",
+      "WebFetch(domain:apiportal.koreainvestment.com)"
     ]
   }
 }
