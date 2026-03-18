@@ -1,6 +1,10 @@
 import type { Anomaly, Analysis, SectorTrend, JobResponse } from '@/types'
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+// SSR(서버): k8s 내부 DNS로 직접 접근
+// CSR(브라우저): 상대 경로 → Ingress가 /api 를 api-service:8000으로 라우팅
+const BASE = typeof window === 'undefined'
+  ? 'http://api-service:8000'
+  : ''
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { cache: 'no-store' })

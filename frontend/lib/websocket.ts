@@ -1,7 +1,11 @@
 import type { WsAnomalyMessage } from '@/types'
 
-const WS_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000')
-  .replace(/^http/, 'ws') + '/ws/live'
+// window.location 기반으로 현재 호스트의 WS URL 생성
+// → Ingress가 /ws 를 api-service:8000으로 라우팅
+function getWsUrl(): string {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${proto}://${location.host}/ws/live`
+}
 
 type Listener = (msg: WsAnomalyMessage) => void
 type StatusCb = (connected: boolean) => void
@@ -18,7 +22,7 @@ function notify(connected: boolean) {
 export function connectWs() {
   if (ws && ws.readyState === WebSocket.OPEN) return
 
-  ws = new WebSocket(WS_URL)
+  ws = new WebSocket(getWsUrl())
 
   ws.onopen = () => {
     notify(true)
