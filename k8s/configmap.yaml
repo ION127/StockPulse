@@ -36,7 +36,7 @@ data:
   INTRADAY_RECENT_MINUTES: "5"           # 장중 최근 데이터 조회 시간 범위 (분)
   SCHEDULE_INTERVAL_MINUTES: "60"        # 스케줄 실행 주기 (분)
   STOCK_INTERVAL: "1m"                   # 주식 데이터 수집 간격
-  STOCK_PERIOD: "5d"                     # 주식 데이터 조회 기간
+  STOCK_PERIOD: "1d"                     # 주식 데이터 조회 기간 (5d→1d: Kafka 메시지 크기 초과 방지)
   COLLECT_INTERVAL_SECONDS: "60"         # 수집 루프 실행 간격 (초)
   FLUSH_INTERVAL_SECONDS: "60"           # Kafka flush 간격 (초)
 
