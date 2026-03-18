@@ -20,9 +20,8 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
 
     # WebSocket 업그레이드 헤더 설정
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/websocket-services: "api-service"
 
     # 프록시 버퍼 설정 (대용량 응답 처리)
     nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
