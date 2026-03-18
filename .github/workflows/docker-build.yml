@@ -24,6 +24,12 @@ jobs:
       - name: Set short SHA
         run: echo "SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_ENV
 
+      # Harbor CA 인증서를 시스템 신뢰 저장소에 추가
+      - name: Trust Harbor CA cert
+        run: |
+          sudo cp /home/user/certs/harbor.crt /usr/local/share/ca-certificates/harbor.crt
+          sudo update-ca-certificates
+
       # Harbor 로그인
       - name: Log in to Harbor
         uses: docker/login-action@v3
@@ -32,7 +38,7 @@ jobs:
           username: ${{ secrets.HARBOR_USER }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
-      # Docker Buildx 설정 (멀티플랫폼 빌드 지원)
+      # Docker Buildx 설정
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
@@ -51,8 +57,6 @@ jobs:
           tags: |
             ${{ secrets.HARBOR_URL }}/stock/api:${{ env.SHORT_SHA }}
             ${{ secrets.HARBOR_URL }}/stock/api:latest
-          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/api:latest
-          cache-to: type=inline
 
       - name: Build and push stock-collector
         uses: docker/build-push-action@v5
@@ -63,8 +67,6 @@ jobs:
           tags: |
             ${{ secrets.HARBOR_URL }}/stock/stock-collector:${{ env.SHORT_SHA }}
             ${{ secrets.HARBOR_URL }}/stock/stock-collector:latest
-          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/stock-collector:latest
-          cache-to: type=inline
 
       - name: Build and push kis-bridge
         uses: docker/build-push-action@v5
@@ -75,8 +77,6 @@ jobs:
           tags: |
             ${{ secrets.HARBOR_URL }}/stock/kis-bridge:${{ env.SHORT_SHA }}
             ${{ secrets.HARBOR_URL }}/stock/kis-bridge:latest
-          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/kis-bridge:latest
-          cache-to: type=inline
 
       - name: Build and push anomaly-detector
         uses: docker/build-push-action@v5
@@ -87,8 +87,6 @@ jobs:
           tags: |
             ${{ secrets.HARBOR_URL }}/stock/anomaly-detector:${{ env.SHORT_SHA }}
             ${{ secrets.HARBOR_URL }}/stock/anomaly-detector:latest
-          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/anomaly-detector:latest
-          cache-to: type=inline
 
       - name: Build and push news-fetcher
         uses: docker/build-push-action@v5
@@ -99,8 +97,6 @@ jobs:
           tags: |
             ${{ secrets.HARBOR_URL }}/stock/news-fetcher:${{ env.SHORT_SHA }}
             ${{ secrets.HARBOR_URL }}/stock/news-fetcher:latest
-          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/news-fetcher:latest
-          cache-to: type=inline
 
       - name: Build and push ai-analyzer
         uses: docker/build-push-action@v5
@@ -111,8 +107,6 @@ jobs:
           tags: |
             ${{ secrets.HARBOR_URL }}/stock/ai-analyzer:${{ env.SHORT_SHA }}
             ${{ secrets.HARBOR_URL }}/stock/ai-analyzer:latest
-          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/ai-analyzer:latest
-          cache-to: type=inline
 
       - name: Build and push notifier
         uses: docker/build-push-action@v5
@@ -123,8 +117,6 @@ jobs:
           tags: |
             ${{ secrets.HARBOR_URL }}/stock/notifier:${{ env.SHORT_SHA }}
             ${{ secrets.HARBOR_URL }}/stock/notifier:latest
-          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/notifier:latest
-          cache-to: type=inline
 
       # ─────────────────────────────────────────────
       # 프론트엔드 빌드 (build context: ./frontend)
@@ -139,8 +131,6 @@ jobs:
           tags: |
             ${{ secrets.HARBOR_URL }}/stock/frontend:${{ env.SHORT_SHA }}
             ${{ secrets.HARBOR_URL }}/stock/frontend:latest
-          cache-from: type=registry,ref=${{ secrets.HARBOR_URL }}/stock/frontend:latest
-          cache-to: type=inline
 
       # ─────────────────────────────────────────────
       # K8s 매니페스트 이미지 태그 업데이트 (GitOps)
@@ -148,9 +138,7 @@ jobs:
 
       - name: Update image tags in K8s manifests
         run: |
-          # 각 서비스의 deployment.yaml에서 이미지 태그를 SHORT_SHA로 교체
           SERVICES="api stock-collector kis-bridge anomaly-detector news-fetcher ai-analyzer notifier frontend"
-
           HARBOR="${{ secrets.HARBOR_URL }}"
 
           for SERVICE in $SERVICES; do
@@ -169,7 +157,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # 변경된 파일이 있는 경우에만 커밋
           if git diff --quiet k8s/; then
             echo "No manifest changes to commit"
           else
