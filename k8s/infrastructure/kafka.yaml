@@ -161,9 +161,9 @@ spec:
                 - sh
                 - -c
                 - "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1"
-            initialDelaySeconds: 60
+            initialDelaySeconds: 90
             periodSeconds: 30
-            timeoutSeconds: 10
+            timeoutSeconds: 30
             failureThreshold: 3
 
           readinessProbe:
@@ -172,9 +172,9 @@ spec:
                 - sh
                 - -c
                 - "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1"
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 10
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 30
             failureThreshold: 3
 
           # ─────────────────────────────────────────────
