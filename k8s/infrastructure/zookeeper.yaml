@@ -142,3 +142,37 @@ spec:
         resources:
           requests:
             storage: 2Gi
+
+---
+# PostSync 훅: ArgoCD Sync 완료 후 zookeeper rolling restart 자동 실행
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: zookeeper-rollout-restart
+  namespace: stock
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: argocd-rollout-restarter
+      containers:
+        - name: kubectl
+          image: bitnami/kubectl:latest
+          command:
+            - kubectl
+            - rollout
+            - restart
+            - statefulset/zookeeper
+            - -n
+            - stock
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
