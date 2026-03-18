@@ -26,7 +26,7 @@ spec:
       containers:
         - name: frontend
           # CI/CD 파이프라인에서 SHORT_SHA로 자동 업데이트됨
-          image: 10.0.2.105/stock/frontend:9644eb0
+          image: 10.0.2.105/stock/frontend:a0c1ae7
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
