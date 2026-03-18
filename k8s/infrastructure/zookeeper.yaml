@@ -79,11 +79,9 @@ spec:
             # JVM 힙 크기 고정 (미설정 시 limit 기준으로 과도하게 설정됨)
             - name: KAFKA_HEAP_OPTS
               value: "-Xmx256m -Xms128m"
-            # 서버 ID (StatefulSet에서 Pod 순서대로 1부터 시작)
+            # 서버 ID: 단일 인스턴스이므로 고정값 1
             - name: ZOOKEEPER_SERVER_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
+              value: "1"
 
           # ─────────────────────────────────────────────
           # 헬스체크
