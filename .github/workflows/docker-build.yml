@@ -15,6 +15,8 @@ env:
 jobs:
   build-and-push:
     runs-on: self-hosted  # Harbor가 로컬에 있으므로 self-hosted runner 사용
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
