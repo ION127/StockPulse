@@ -156,25 +156,19 @@ spec:
           # 헬스체크
           # ─────────────────────────────────────────────
           livenessProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1"
-            initialDelaySeconds: 90
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 60
             periodSeconds: 30
-            timeoutSeconds: 30
+            timeoutSeconds: 10
             failureThreshold: 3
 
           readinessProbe:
-            exec:
-              command:
-                - sh
-                - -c
-                - "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1"
-            initialDelaySeconds: 60
-            periodSeconds: 15
-            timeoutSeconds: 30
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
             failureThreshold: 3
 
           # ─────────────────────────────────────────────
