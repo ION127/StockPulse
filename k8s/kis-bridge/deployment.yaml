@@ -38,7 +38,7 @@ spec:
       containers:
         - name: kis-bridge
           # CI/CD 파이프라인에서 SHORT_SHA로 자동 업데이트됨
-          image: 10.0.2.105/stock/kis-bridge:0f430af
+          image: 10.0.2.105/stock/kis-bridge:452e3cb
           imagePullPolicy: Always
 
           envFrom:
