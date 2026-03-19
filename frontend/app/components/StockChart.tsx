@@ -8,6 +8,7 @@ import {
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import type { Anomaly } from '@/types'
+import { getCompanyName, hasCompanyName } from '@/lib/tickerNames'
 
 interface ChartPoint {
   date: string
@@ -49,7 +50,13 @@ export default function StockChart() {
   return (
     <div className="rounded-lg bg-gray-900 p-4">
       <h2 className="text-sm font-semibold text-gray-300 mb-3">
-        {ticker} — 이상값 이력 (30일)
+        {hasCompanyName(ticker) ? (
+          <>
+            {getCompanyName(ticker)}
+            <span className="ml-1.5 text-xs text-gray-500 font-mono font-normal">{ticker}</span>
+          </>
+        ) : ticker}
+        {' '}— 이상값 이력 (30일)
       </h2>
       {loading ? (
         <div className="flex items-center justify-center h-40 text-xs text-gray-600">로딩 중...</div>

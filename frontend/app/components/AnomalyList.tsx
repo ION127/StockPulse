@@ -3,6 +3,7 @@
 import { useStore } from '@/lib/store'
 import clsx from 'clsx'
 import type { Anomaly } from '@/types'
+import { getCompanyName, hasCompanyName } from '@/lib/tickerNames'
 
 const EVENT_LABEL: Record<string, string> = {
   INDIVIDUAL: '개별',
@@ -25,7 +26,12 @@ function AnomalyRow({ anomaly, onClick }: { anomaly: Anomaly; onClick: () => voi
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-mono font-bold text-sm text-white shrink-0">{anomaly.ticker}</span>
+          <span className="font-mono font-bold text-sm text-white shrink-0">
+            {hasCompanyName(anomaly.ticker) ? getCompanyName(anomaly.ticker) : anomaly.ticker}
+          </span>
+          {hasCompanyName(anomaly.ticker) && (
+            <span className="text-[10px] text-gray-500 font-mono shrink-0">{anomaly.ticker}</span>
+          )}
           <span className={clsx('text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0', EVENT_COLOR[anomaly.event_type])}>
             {EVENT_LABEL[anomaly.event_type] ?? anomaly.event_type}
           </span>
