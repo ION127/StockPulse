@@ -133,19 +133,24 @@ const TICKER_NAMES: Record<string, string> = {
   '004170': '신세계',
 }
 
+// KR: 접두사 제거 후 조회
+function normalize(ticker: string): string {
+  return ticker.startsWith('KR:') ? ticker.slice(3) : ticker
+}
+
 /**
  * 티커 코드로 기업명을 반환합니다.
- * 매핑이 없으면 원래 티커 코드를 그대로 반환합니다.
+ * KR:005930 → 삼성전자, 매핑이 없으면 원래 코드 그대로 반환합니다.
  */
 export function getCompanyName(ticker: string): string {
-  return TICKER_NAMES[ticker] ?? ticker
+  return TICKER_NAMES[normalize(ticker)] ?? ticker
 }
 
 /**
  * 티커 코드가 기업명 매핑에 있는지 확인합니다.
  */
 export function hasCompanyName(ticker: string): boolean {
-  return ticker in TICKER_NAMES
+  return normalize(ticker) in TICKER_NAMES
 }
 
 /**
@@ -158,6 +163,10 @@ export function searchTickers(query: string): Array<{ ticker: string; name: stri
     .filter(([ticker, name]) =>
       ticker.toLowerCase().includes(q) || name.toLowerCase().includes(q)
     )
-    .map(([ticker, name]) => ({ ticker, name }))
+    .map(([ticker, name]) => ({
+      // 숫자로만 이루어진 코드(한국 종목)는 KR: 접두사 붙여서 반환
+      ticker: /^\d+$/.test(ticker) ? `KR:${ticker}` : ticker,
+      name,
+    }))
     .slice(0, 10)
 }
