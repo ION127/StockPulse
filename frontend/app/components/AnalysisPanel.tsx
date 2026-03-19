@@ -43,9 +43,9 @@ export default function AnalysisPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {selectedAnomalyId == null && !selectedAnomalyHasAnalysis ? (
+        {selectedAnomalyHasAnalysis === null ? (
           <p className="text-xs text-gray-600">이상값을 선택하세요</p>
-        ) : !selectedAnomalyHasAnalysis ? (
+        ) : selectedAnomalyHasAnalysis === false ? (
           <p className="text-xs text-gray-600">이 이상값의 AI 분석 리포트가 없습니다</p>
         ) : !analysis ? (
           <p className="text-xs text-gray-600">분석 데이터를 불러오는 중...</p>
