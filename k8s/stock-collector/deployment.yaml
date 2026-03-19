@@ -38,7 +38,7 @@ spec:
       containers:
         - name: stock-collector
           # CI/CD 파이프라인에서 SHORT_SHA로 자동 업데이트됨
-          image: 10.0.2.105/stock/stock-collector:d9b2110
+          image: 10.0.2.105/stock/stock-collector:888627d
           imagePullPolicy: Always
 
           # ConfigMap에서 공통 환경변수 주입
