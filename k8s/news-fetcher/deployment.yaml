@@ -38,7 +38,7 @@ spec:
       containers:
         - name: news-fetcher
           # CI/CD 파이프라인에서 SHORT_SHA로 자동 업데이트됨
-          image: 10.0.2.105/stock/news-fetcher:d6f7f59
+          image: 10.0.2.105/stock/news-fetcher:6c7d4be
           imagePullPolicy: Always
 
           envFrom:
