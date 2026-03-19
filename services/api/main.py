@@ -12,7 +12,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from db.connection import init_db, AsyncSessionLocal
-from routers import anomalies, sectors, jobs, stocks
+from routers import anomalies, sectors, jobs, stocks, auth, user
 from services.pipeline import run_pipeline
 
 logger = logging.getLogger(__name__)
@@ -225,6 +225,8 @@ try:
 except ImportError:
     logger.warning("prometheus-fastapi-instrumentator 미설치 — /metrics 비활성")
 
+app.include_router(auth.router)
+app.include_router(user.router)
 app.include_router(anomalies.router)
 app.include_router(sectors.router)
 app.include_router(jobs.router)

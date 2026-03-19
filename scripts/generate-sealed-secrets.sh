@@ -62,7 +62,7 @@ mkdir -p "$OUTPUT_DIR"
 KUBESEAL_OPTS="--controller-namespace $CONTROLLER_NS --controller-name $CONTROLLER_NAME --format yaml"
 
 # ── 필수 변수 확인 ──────────────────────────────────────────
-required_vars=(GEMINI_API_KEY NEWS_API_KEY KIS_APP_KEY KIS_APP_SECRET HARBOR_URL HARBOR_USER HARBOR_PASSWORD)
+required_vars=(GEMINI_API_KEY NEWS_API_KEY KIS_APP_KEY KIS_APP_SECRET HARBOR_URL HARBOR_USER HARBOR_PASSWORD JWT_SECRET)
 for var in "${required_vars[@]}"; do
   if [ -z "${!var:-}" ]; then
     warn "$var 가 .env에 없습니다. 해당 Secret은 건너뜁니다."
@@ -119,7 +119,20 @@ else
   warn "SLACK_WEBHOOK_URL 없음 — stock-notifier-secret 건너뜀 (Slack 알림 비활성)"
 fi
 
-# ── 5. harbor-pull-secret ──────────────────────────────────
+# ── 5. stock-auth-secret ───────────────────────────────────
+if [ -n "${JWT_SECRET:-}" ]; then
+  info "stock-auth-secret 생성 중..."
+  kubectl create secret generic stock-auth-secret \
+    -n "$NAMESPACE" \
+    --from-literal=JWT_SECRET="${JWT_SECRET}" \
+    --dry-run=client -o yaml \
+    | kubeseal $KUBESEAL_OPTS > "$OUTPUT_DIR/stock-auth-secret.yaml"
+  info "  → $OUTPUT_DIR/stock-auth-secret.yaml"
+else
+  warn "JWT_SECRET 없음 — stock-auth-secret 건너뜀"
+fi
+
+# ── 6. harbor-pull-secret ──────────────────────────────────
 if [ -n "${HARBOR_URL:-}" ] && [ -n "${HARBOR_USER:-}" ] && [ -n "${HARBOR_PASSWORD:-}" ]; then
   info "harbor-pull-secret 생성 중..."
   kubectl create secret docker-registry harbor-pull-secret \

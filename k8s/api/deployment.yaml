@@ -107,6 +107,8 @@ spec:
                 name: stock-api-secrets  # GEMINI_API_KEY, NEWS_API_KEY
             - secretRef:
                 name: stock-kis-secret   # KIS_APP_KEY, KIS_APP_SECRET, KIS_MOCK
+            - secretRef:
+                name: stock-auth-secret  # JWT_SECRET
 
           # ─────────────────────────────────────────────
           # 헬스체크 설정

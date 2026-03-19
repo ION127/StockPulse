@@ -2,7 +2,7 @@
 
 from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import BigInteger, Boolean, Integer, String, Float, Date, DateTime, Text, JSON, ForeignKey, func
+from sqlalchemy import BigInteger, Boolean, Integer, String, Float, Date, DateTime, Text, JSON, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.connection import Base
 
@@ -41,3 +41,61 @@ class AnalysisResult(Base):
     news_kr:     Mapped[list]     = mapped_column(JSON, default=list)
 
     anomaly: Mapped["Anomaly"] = relationship(back_populates="analysis")
+
+
+# ── Phase 6: 사용자 인증 & 서버사이드 포트폴리오 ───────────────────────────
+
+class User(Base):
+    __tablename__ = "users"
+
+    id:            Mapped[int]      = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email:         Mapped[str]      = mapped_column(String(255), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str]      = mapped_column(String(255), nullable=False)
+    tier:          Mapped[str]      = mapped_column(String(20), default="free")   # free/standard/pro/enterprise
+    is_active:     Mapped[bool]     = mapped_column(Boolean, default=True)
+    created_at:    Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    watchlists:     Mapped[list["Watchlist"]]    = relationship(back_populates="user", cascade="all, delete-orphan")
+    portfolios:     Mapped[list["Portfolio"]]    = relationship(back_populates="user", cascade="all, delete-orphan")
+    alert_settings: Mapped[list["AlertSetting"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class Watchlist(Base):
+    __tablename__ = "watchlists"
+    __table_args__ = (UniqueConstraint("user_id", "ticker", name="uq_watchlist_user_ticker"),)
+
+    id:       Mapped[int]      = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id:  Mapped[int]      = mapped_column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    ticker:   Mapped[str]      = mapped_column(String(20), nullable=False)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="watchlists")
+
+
+class Portfolio(Base):
+    __tablename__ = "portfolios"
+    __table_args__ = (UniqueConstraint("user_id", "ticker", name="uq_portfolio_user_ticker"),)
+
+    id:        Mapped[int]      = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id:   Mapped[int]      = mapped_column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    ticker:    Mapped[str]      = mapped_column(String(20), nullable=False)
+    quantity:  Mapped[float]    = mapped_column(Float, nullable=False)
+    avg_price: Mapped[float]    = mapped_column(Float, nullable=False)
+    added_at:  Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="portfolios")
+
+
+class AlertSetting(Base):
+    __tablename__ = "alert_settings"
+    __table_args__ = (UniqueConstraint("user_id", "ticker", name="uq_alert_user_ticker"),)
+
+    id:             Mapped[int]      = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id:        Mapped[int]      = mapped_column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    ticker:         Mapped[str]      = mapped_column(String(20), nullable=False)
+    threshold_pct:  Mapped[float]    = mapped_column(Float, default=3.0)
+    alert_channel:  Mapped[str]      = mapped_column(String(20), default="email")  # email/kakao/browser
+    quiet_start:    Mapped[Optional[int]] = mapped_column(Integer)  # 22 (22:00)
+    quiet_end:      Mapped[Optional[int]] = mapped_column(Integer)  # 8  (08:00)
+
+    user: Mapped["User"] = relationship(back_populates="alert_settings")
