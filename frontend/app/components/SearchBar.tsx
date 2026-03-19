@@ -2,13 +2,16 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useStore } from '@/lib/store'
+import { useWatchlistStore } from '@/lib/watchlistStore'
 import { searchTickers, getCompanyName } from '@/lib/tickerNames'
+import clsx from 'clsx'
 
 export default function SearchBar() {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const setSelectedTicker = useStore((s) => s.setSelectedTicker)
   const setSelectedAnomalyId = useStore((s) => s.setSelectedAnomalyId)
+  const { isWatched, addToWatchlist, removeFromWatchlist } = useWatchlistStore()
   const ref = useRef<HTMLDivElement>(null)
 
   const results = searchTickers(query)
@@ -58,14 +61,28 @@ export default function SearchBar() {
       {open && results.length > 0 && (
         <div className="absolute top-full mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 overflow-hidden">
           {results.map(({ ticker, name }) => (
-            <button
-              key={ticker}
-              onMouseDown={() => select(ticker)}
-              className="w-full text-left px-3 py-2 hover:bg-gray-700 flex items-center justify-between gap-2 transition-colors"
-            >
-              <span className="text-xs text-white">{name}</span>
-              <span className="text-[10px] text-gray-400 font-mono shrink-0">{ticker}</span>
-            </button>
+            <div key={ticker} className="flex items-center hover:bg-gray-700 transition-colors">
+              <button
+                onMouseDown={() => select(ticker)}
+                className="flex-1 text-left px-3 py-2 flex items-center justify-between gap-2"
+              >
+                <span className="text-xs text-white">{name}</span>
+                <span className="text-[10px] text-gray-400 font-mono shrink-0">{ticker}</span>
+              </button>
+              <button
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  isWatched(ticker) ? removeFromWatchlist(ticker) : addToWatchlist(ticker)
+                }}
+                className={clsx(
+                  'px-2 py-2 text-sm shrink-0 transition-colors',
+                  isWatched(ticker) ? 'text-yellow-400' : 'text-gray-600 hover:text-gray-300'
+                )}
+                title={isWatched(ticker) ? '관심 종목 제거' : '관심 종목 추가'}
+              >
+                ★
+              </button>
+            </div>
           ))}
         </div>
       )}

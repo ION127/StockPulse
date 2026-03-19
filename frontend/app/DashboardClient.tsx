@@ -10,6 +10,7 @@ import SectorHeatmap from './components/SectorHeatmap'
 import AnomalyList from './components/AnomalyList'
 import StockChart from './components/StockChart'
 import AnalysisPanel from './components/AnalysisPanel'
+import PortfolioPanel from './components/PortfolioPanel'
 
 interface Props {
   initialAnomalies: Anomaly[]
@@ -37,13 +38,16 @@ export default function DashboardClient({ initialAnomalies, initialSectorTrends,
         <Header lastUpdated={lastUpdated} />
 
         <main className="flex-1 p-4 grid gap-4" style={{ gridTemplateRows: 'auto 1fr auto' }}>
-          {/* 상단 행: 섹터 히트맵 + 이상값 목록 */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-1">
+          {/* 상단 행: 섹터 히트맵 + 이상값 목록 + 관심종목/포트폴리오 */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" style={{ maxHeight: '320px' }}>
+            <div className="lg:col-span-1 overflow-hidden">
               <SectorHeatmap />
             </div>
-            <div className="lg:col-span-2" style={{ maxHeight: '320px' }}>
+            <div className="lg:col-span-1 overflow-hidden">
               <AnomalyList />
+            </div>
+            <div className="lg:col-span-1 overflow-hidden">
+              <PortfolioPanel />
             </div>
           </div>
 

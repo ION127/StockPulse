@@ -158,9 +158,18 @@ Please provide your analysis in the following exact format:
             parts = full_text.split("---[English Analysis]---")
             ko_part = parts[0].replace("---[한국어 분석]---", "").strip()
             en_part = parts[1].strip() if len(parts) > 1 else ""
+        elif "---[한국어 분석]---" in full_text:
+            # 영어 섹션 누락 — 한국어만 저장, 영어는 빈 문자열
+            ko_part = full_text.replace("---[한국어 분석]---", "").strip()
+            en_part = ""
+        elif "---[English Analysis]---" in full_text:
+            # 한국어 섹션 누락 — 영어만 저장
+            ko_part = ""
+            en_part = full_text.replace("---[English Analysis]---", "").strip()
         else:
+            # 구분자 없음 — 전체를 한국어로, 영어는 빈 문자열
             ko_part = full_text
-            en_part = full_text
+            en_part = ""
 
         return {"ko": ko_part, "en": en_part}
 
@@ -237,9 +246,15 @@ Respond in this exact format:
             parts = full_text.split("---[English Macro Analysis]---")
             ko_part = parts[0].replace("---[한국어 종합 분석]---", "").strip()
             en_part = parts[1].strip() if len(parts) > 1 else ""
+        elif "---[한국어 종합 분석]---" in full_text:
+            ko_part = full_text.replace("---[한국어 종합 분석]---", "").strip()
+            en_part = ""
+        elif "---[English Macro Analysis]---" in full_text:
+            ko_part = ""
+            en_part = full_text.replace("---[English Macro Analysis]---", "").strip()
         else:
             ko_part = full_text
-            en_part = full_text
+            en_part = ""
 
         return {"ko": ko_part, "en": en_part}
 
