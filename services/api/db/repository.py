@@ -15,9 +15,13 @@ class AnomalyRepository:
         self.db = db
 
     async def save_anomaly(self, data: dict) -> Anomaly:
-        stmt = select(Anomaly).where(
-            Anomaly.ticker == data["ticker"],
-            Anomaly.anomaly_date == data["anomaly_date"],
+        stmt = (
+            select(Anomaly)
+            .options(selectinload(Anomaly.analysis))
+            .where(
+                Anomaly.ticker == data["ticker"],
+                Anomaly.anomaly_date == data["anomaly_date"],
+            )
         )
         existing = (await self.db.execute(stmt)).scalar_one_or_none()
         if existing:
