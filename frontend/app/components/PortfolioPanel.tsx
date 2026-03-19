@@ -1,12 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useWatchlistStore } from '@/lib/watchlistStore'
 import { useStore } from '@/lib/store'
+import { api } from '@/lib/api'
 import { getCompanyName, hasCompanyName } from '@/lib/tickerNames'
 import clsx from 'clsx'
 
 type Tab = 'watchlist' | 'portfolio'
+
+// ── 관심 종목 탭 ────────────────────────────────────────────────────────────
 
 function WatchlistTab() {
   const { watchlist, removeFromWatchlist } = useWatchlistStore()
@@ -63,18 +66,44 @@ function WatchlistTab() {
   )
 }
 
+// ── 포트폴리오 탭 ────────────────────────────────────────────────────────────
+
 function PortfolioTab() {
   const { watchlist, portfolio, setPortfolioItem, removePortfolioItem } = useWatchlistStore()
-  const anomalies = useStore((s) => s.anomalies)
+  const [prices, setPrices] = useState<Record<string, number>>({})
+  const [loading, setLoading] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null)
   const [form, setForm] = useState({ ticker: '', qty: '', avgPrice: '' })
-  const [editing, setEditing] = useState<string | null>(null)
 
-  function getRefPrice(ticker: string): number | null {
-    const found = [...anomalies]
-      .sort((a, b) => new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime())
-      .find((a) => a.ticker === ticker && a.close_price)
-    return found?.close_price ?? null
-  }
+  const tickers = Object.keys(portfolio)
+
+  const fetchPrices = useCallback(async () => {
+    if (tickers.length === 0) return
+    setLoading(true)
+    const results: Record<string, number> = {}
+    await Promise.all(
+      tickers.map(async (ticker) => {
+        try {
+          const candles = await api.getCandles(ticker, 1)
+          if (candles.length > 0) {
+            results[ticker] = candles[candles.length - 1].close
+          }
+        } catch {
+          // 가격 조회 실패 시 무시
+        }
+      })
+    )
+    setPrices(results)
+    setLastUpdated(new Date().toLocaleTimeString('ko-KR'))
+    setLoading(false)
+  }, [tickers.join(',')])
+
+  // 포트폴리오 탭 진입 시 및 60초마다 가격 갱신
+  useEffect(() => {
+    fetchPrices()
+    const interval = setInterval(fetchPrices, 60_000)
+    return () => clearInterval(interval)
+  }, [fetchPrices])
 
   function handleAdd() {
     const qty = parseFloat(form.qty)
@@ -86,10 +115,7 @@ function PortfolioTab() {
 
   const items = Object.entries(portfolio)
   const totalCost = items.reduce((s, [, i]) => s + i.qty * i.avgPrice, 0)
-  const totalValue = items.reduce((s, [t, i]) => {
-    const ref = getRefPrice(t)
-    return s + i.qty * (ref ?? i.avgPrice)
-  }, 0)
+  const totalValue = items.reduce((s, [t, i]) => s + i.qty * (prices[t] ?? i.avgPrice), 0)
   const totalPnl = totalValue - totalCost
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0
 
@@ -136,17 +162,30 @@ function PortfolioTab() {
 
       {/* 보유 종목 목록 */}
       {items.length === 0 ? (
-        <p className="text-xs text-gray-600 text-center py-2">보유 종목을 추가하면 손익이 계산됩니다</p>
+        <p className="text-xs text-gray-600 text-center py-2">보유 종목을 추가하면 현재 손익이 계산됩니다</p>
       ) : (
         <>
+          {/* 갱신 상태 */}
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-gray-600">
+              {loading ? '가격 조회 중...' : lastUpdated ? `${lastUpdated} 기준` : ''}
+            </span>
+            <button
+              onClick={fetchPrices}
+              disabled={loading}
+              className="text-[10px] text-indigo-400 hover:text-indigo-300 disabled:text-gray-600"
+            >
+              새로고침
+            </button>
+          </div>
+
           <div className="space-y-1">
             {items.map(([ticker, item]) => {
-              const refPrice = getRefPrice(ticker)
-              const value = item.qty * (refPrice ?? item.avgPrice)
+              const currentPrice = prices[ticker] ?? null
+              const value = item.qty * (currentPrice ?? item.avgPrice)
               const cost = item.qty * item.avgPrice
               const pnl = value - cost
               const pnlPct = (pnl / cost) * 100
-              const hasRef = refPrice !== null
 
               return (
                 <div key={ticker} className="bg-gray-800 rounded px-3 py-2">
@@ -165,17 +204,24 @@ function PortfolioTab() {
                     </button>
                   </div>
                   <div className="mt-1 flex items-center justify-between text-[10px]">
-                    <span className="text-gray-400">
-                      {item.qty}주 × {item.avgPrice.toLocaleString()}원
-                    </span>
-                    {hasRef ? (
+                    <div className="text-gray-400">
+                      <span>{item.qty}주</span>
+                      <span className="mx-1">·</span>
+                      <span>매수 {item.avgPrice.toLocaleString()}</span>
+                      {currentPrice && (
+                        <>
+                          <span className="mx-1">→</span>
+                          <span className="text-white">현재 {currentPrice.toLocaleString()}</span>
+                        </>
+                      )}
+                    </div>
+                    {currentPrice ? (
                       <span className={clsx('font-bold', pnl >= 0 ? 'text-red-400' : 'text-blue-400')}>
-                        {pnl >= 0 ? '+' : ''}{pnl.toLocaleString(undefined, { maximumFractionDigits: 0 })}원
+                        {pnl >= 0 ? '+' : ''}{pnl.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         {' '}({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%)
-                        <span className="text-gray-600 font-normal ml-1">기준가 기준</span>
                       </span>
                     ) : (
-                      <span className="text-gray-600">이상값 발생 시 손익 표시</span>
+                      <span className="text-gray-600">조회 중</span>
                     )}
                   </div>
                 </div>
@@ -184,14 +230,18 @@ function PortfolioTab() {
           </div>
 
           {/* 총계 */}
-          <div className="border-t border-gray-700 pt-2">
+          <div className="border-t border-gray-700 pt-2 space-y-1">
             <div className="flex items-center justify-between text-xs">
               <span className="text-gray-400">총 투자금액</span>
               <span className="text-white">{totalCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}원</span>
             </div>
-            <div className="flex items-center justify-between text-xs mt-1">
-              <span className="text-gray-400">평가 손익</span>
-              <span className={clsx('font-bold', totalPnl >= 0 ? 'text-red-400' : 'text-blue-400')}>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-400">평가금액</span>
+              <span className="text-white">{totalValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}원</span>
+            </div>
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className="text-gray-300">평가 손익</span>
+              <span className={clsx(totalPnl >= 0 ? 'text-red-400' : 'text-blue-400')}>
                 {totalPnl >= 0 ? '+' : ''}{totalPnl.toLocaleString(undefined, { maximumFractionDigits: 0 })}원
                 {' '}({totalPnlPct >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
               </span>
@@ -202,6 +252,8 @@ function PortfolioTab() {
     </div>
   )
 }
+
+// ── 메인 패널 ────────────────────────────────────────────────────────────────
 
 export default function PortfolioPanel() {
   const [tab, setTab] = useState<Tab>('watchlist')
@@ -220,8 +272,8 @@ export default function PortfolioPanel() {
             )}
           >
             {t === 'watchlist'
-              ? `관심 종목 ${watchlist.length > 0 ? `(${watchlist.length})` : ''}`
-              : `포트폴리오 ${Object.keys(portfolio).length > 0 ? `(${Object.keys(portfolio).length})` : ''}`}
+              ? `관심 종목${watchlist.length > 0 ? ` (${watchlist.length})` : ''}`
+              : `포트폴리오${Object.keys(portfolio).length > 0 ? ` (${Object.keys(portfolio).length})` : ''}`}
           </button>
         ))}
       </div>

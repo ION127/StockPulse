@@ -8,11 +8,13 @@
 3. [전체 기술 스택](#3-전체-기술-스택)
 4. [Phase 1 - FastAPI 백엔드](#phase-1--fastapi-백엔드-완료)
 5. [Phase 2 - 프론트엔드 대시보드](#phase-2--프론트엔드-대시보드-완료)
-6. [Phase 3 - Kafka 파이프라인](#phase-3--kafka-파이프라인-12개월)
-7. [Phase 4 - Docker & Kubernetes](#phase-4--docker--kubernetes-23개월)
-8. [최종 아키텍처 다이어그램](#8-최종-아키텍처-다이어그램)
-9. [DB 스키마 설계](#9-db-스키마-설계)
-10. [API 명세](#10-api-명세)
+6. [Phase 3 - Kafka 파이프라인](#phase-3--kafka-파이프라인-완료)
+7. [Phase 4 - Docker & Kubernetes](#phase-4--docker--kubernetes-완료)
+8. [Phase 5 - 개인화 서비스 POC](#phase-5--개인화-서비스-poc-진행중)
+9. [최종 아키텍처 다이어그램](#9-최종-아키텍처-다이어그램)
+10. [DB 스키마 설계](#10-db-스키마-설계)
+11. [API 명세](#11-api-명세)
+12. [향후 로드맵](#12-향후-로드맵)
 
 ---
 
@@ -27,9 +29,12 @@
 - 영문 + 한국어 뉴스 수집 후 Gemini AI 분석
 - 한국어 + 영어 동시 분석 리포트 제공
 - 섹터별 글로벌 관심도 트렌드 파악
-- **종목 검색** — 이상값 외 임의 종목을 이름/코드로 검색해 분봉 차트 조회
 - **분봉 차트** — 실제 가격선 위에 이상값 발생 위치를 마커로 표시 (1D/3D/5D 선택)
-- **기업명 표시** — 티커 코드 대신 기업명으로 종목 식별 (NVDA → NVIDIA)
+  - 미국: yfinance 1분봉 / 한국 1D: KIS REST API 분봉 / 한국 3D·5D: pykrx 일봉
+- **종목 검색** — 기업명/코드로 임의 종목 검색 후 차트 조회
+- **기업명 표시** — 티커 코드 대신 기업명으로 종목 식별 (NVDA → NVIDIA, KR:005930 → 삼성전자)
+- **관심 종목 (Watchlist)** — ★로 종목 추가, 내 종목만 필터, localStorage 영속
+- **포트폴리오 손익 추적** — 수량·평균단가 입력 → KIS/yfinance 현재가로 실시간 손익 계산
 
 ---
 
@@ -54,80 +59,72 @@ project/
 │   │   │   ├── models.py          #   Anomaly, AnalysisResult ORM
 │   │   │   └── repository.py      #   DB 쿼리 레포지토리
 │   │   ├── routers/
-│   │   │   ├── anomalies.py       #   GET /api/v1/anomalies
+│   │   │   ├── anomalies.py       #   GET /api/v1/anomalies (has_analysis 필드 포함)
 │   │   │   ├── sectors.py         #   GET /api/v1/sectors/trending
 │   │   │   ├── jobs.py            #   POST /api/v1/analyze/trigger
 │   │   │   └── stocks.py          #   GET /api/v1/stocks/{ticker}/candles
+│   │   │                          #     US: yfinance 1분봉
+│   │   │                          #     KR 1D: KIS REST API 분봉 (stock-kis-secret 필요)
+│   │   │                          #     KR 3D/5D: pykrx 일봉
 │   │   ├── schemas/
 │   │   │   └── anomaly.py         #   Pydantic 요청/응답 모델
 │   │   └── services/
 │   │       └── pipeline.py        #   수집→탐지→저장→AI분석 파이프라인
 │   │
-│   ├── stock-collector/           # Phase 3: 미국 1분봉 → Kafka 'stock.raw.us' (60초 루프)
+│   ├── stock-collector/           # 미국 1분봉 → Kafka 'stock.raw.us' (60초 루프)
 │   │   ├── Dockerfile
 │   │   └── main.py
 │   │
-│   ├── kis-bridge/                # 한국 실시간 → Kafka 'stock.raw.kr' [Docker 가능]
-│   │   ├── Dockerfile             #   Linux 기반, HTS 불필요
-│   │   ├── main.py                #   한국투자증권 WebSocket, asyncio
-│   │   └── requirements.txt       #   aiohttp, websockets, confluent-kafka
+│   ├── kis-bridge/                # 한국 실시간 → Kafka 'stock.raw.kr'
+│   │   ├── Dockerfile             #   KIS WebSocket, 1분봉 집계, 40종목×다중연결
+│   │   ├── main.py
+│   │   └── requirements.txt
 │   │
-│   ├── anomaly-detector/          # Phase 3: Kafka 'anomaly.detected' 발행
+│   ├── anomaly-detector/          # Kafka 'anomaly.detected' 발행
 │   │   ├── Dockerfile
 │   │   └── main.py
 │   │
-│   ├── news-fetcher/              # Phase 3: Kafka 'news.fetched' 발행
+│   ├── news-fetcher/              # Kafka 'news.fetched' 발행
 │   │   ├── Dockerfile
 │   │   └── main.py
 │   │
-│   ├── ai-analyzer/               # Phase 3: Kafka 'analysis.completed' 발행
+│   ├── ai-analyzer/               # Kafka 'analysis.completed' 발행
 │   │   ├── Dockerfile
 │   │   └── main.py
 │   │
-│   └── notifier/                  # Phase 3: Slack/Email 알림
+│   └── notifier/                  # Slack/Email 알림
 │       ├── Dockerfile
 │       └── main.py
 │
 ├── frontend/                      # ★ Next.js 14 대시보드          [Port 3000]
-│   ├── Dockerfile                 #   독립 이미지 (Node 20 멀티스테이지)
+│   ├── Dockerfile
 │   ├── app/
 │   │   ├── page.tsx               #   SSR 초기 데이터 로드
-│   │   ├── DashboardClient.tsx    #   클라이언트 레이아웃
+│   │   ├── DashboardClient.tsx    #   클라이언트 레이아웃 (3열 상단 + 2열 하단)
 │   │   └── components/
 │   │       ├── Header.tsx         #   연결 상태 + 수동 분석 트리거 + 검색바
-│   │       ├── SearchBar.tsx      #   종목 검색 (기업명/티커 코드)
+│   │       ├── SearchBar.tsx      #   종목 검색 + ★ 관심 종목 토글
 │   │       ├── SectorHeatmap.tsx  #   섹터별 색상 히트맵
-│   │       ├── AnomalyList.tsx    #   실시간 이상값 목록 (기업명 표시)
+│   │       ├── AnomalyList.tsx    #   이상값 목록 (★버튼, 내 종목만 필터)
 │   │       ├── StockChart.tsx     #   분봉 가격선 + 이상값 마커 (1D/3D/5D)
-│   │       ├── AnalysisPanel.tsx  #   AI 분석 한/영 탭
+│   │       ├── AnalysisPanel.tsx  #   AI 분석 한/영 탭 (분석없음 상태 구분)
+│   │       ├── PortfolioPanel.tsx #   관심 종목 + 포트폴리오 손익 (실시간 가격)
 │   │       └── WsProvider.tsx     #   WebSocket 연결 관리
 │   ├── lib/
 │   │   ├── api.ts                 #   FastAPI REST 클라이언트
-│   │   ├── store.ts               #   Zustand 전역 스토어 (분봉 캐시 포함)
+│   │   ├── store.ts               #   Zustand 전역 스토어
+│   │   ├── watchlistStore.ts      #   관심 종목 + 포트폴리오 (Zustand persist)
 │   │   ├── websocket.ts           #   WS 자동 재연결
-│   │   └── tickerNames.ts         #   티커↔기업명 매핑 + 검색 함수
-│   └── types/index.ts             #   TypeScript 타입 정의 (Candle 포함)
+│   │   └── tickerNames.ts         #   티커↔기업명 매핑 (KR: 접두사 정규화)
+│   └── types/index.ts             #   TypeScript 타입 (has_analysis 필드 포함)
 │
-├── cli/                           # CLI 도구 (로컬 실행 / GitHub Actions)
-│   └── main.py                    #   python -m cli.main [--demo]
+├── k8s/                           # Kubernetes 매니페스트
+│   ├── api/deployment.yaml        #   stock-kis-secret 포함 (KR 분봉 API용)
+│   └── ...
 │
-├── docker-compose.yml             # 로컬 통합 실행 (전 서비스 활성)
-├── requirements.txt               # Python 공통 의존성
-└── .github/workflows/python.yml   # CI: 평일 09시 자동 실행
+├── docker-compose.yml
+└── DFD.md                         # 데이터 흐름도
 ```
-
-### Docker 이미지 빌드 방식
-
-| 서비스 | Build Context | Dockerfile 위치 | 이유 |
-|--------|-------------|----------------|------|
-| `api` | `.` (루트) | `services/api/Dockerfile` | `core/` 공유 모듈 접근 필요 |
-| `stock-collector` | `.` (루트) | `services/stock-collector/Dockerfile` | `core/` 접근 필요 |
-| `anomaly-detector` | `.` (루트) | `services/anomaly-detector/Dockerfile` | `core/` 접근 필요 |
-| `news-fetcher` | `.` (루트) | `services/news-fetcher/Dockerfile` | `core/` 접근 필요 |
-| `ai-analyzer` | `.` (루트) | `services/ai-analyzer/Dockerfile` | `core/` 접근 필요 |
-| `kis-bridge` | `.` (루트) | `services/kis-bridge/Dockerfile` | `core/` 접근 필요 |
-| `notifier` | `.` (루트) | `services/notifier/Dockerfile` | `core/` 접근 불필요, 독립 |
-| `frontend` | `./frontend` | `frontend/Dockerfile` | Node.js 전용, core 불필요 |
 
 ---
 
@@ -146,7 +143,7 @@ project/
 | 역할 | 기술 | 선택 이유 |
 |------|------|-----------|
 | 프레임워크 | **Next.js 14** (React) | SSR/SSG 지원, SEO, 빠른 초기 로딩 |
-| 상태관리 | **Zustand** | Redux보다 가볍고 간단 |
+| 상태관리 | **Zustand** (+ persist 미들웨어) | Redux보다 가볍고 간단, localStorage 영속 |
 | 차트 | **Recharts** | React 친화적, 커스터마이징 쉬움 |
 | 실시간 | **WebSocket** (native) | 이상값 발생 시 즉시 브라우저 알림 |
 | 스타일 | **Tailwind CSS** | 빠른 UI 구성 |
@@ -155,30 +152,29 @@ project/
 | 역할 | 기술 | 선택 이유 |
 |------|------|-----------|
 | AI 분석 | **Gemini 2.5 Flash** | 무료 티어, 한/영 동시 분석 |
-| 주가 (미국) | **yfinance 1분봉** | 무료, 1분봉 polling, 5일치 Z-score 계산 |
-| 주가 (한국) | **한국투자증권 KIS WebSocket** | 실시간 체결 → 1분봉 집계, HTS 불필요, Docker 가능 |
-| 종목 구성 | **섹터 ETF + 시가총액 상위주** | 예측 불가 개별 이벤트 제거, 섹터 시그널 집중 |
+| 주가 (미국) | **yfinance 1분봉** | 무료, 1분봉 polling |
+| 주가 (한국 실시간) | **KIS WebSocket** | 체결 → 1분봉 집계 |
+| 주가 (한국 분봉 조회) | **KIS REST API** | 당일 분봉 차트 (inquire-time-itemchartprice) |
+| 주가 (한국 일봉) | **pykrx** | 3D/5D 일봉 조회 |
 | 뉴스 (영문) | **NewsAPI + Google RSS** | 무료 티어 존재 |
 | 뉴스 (한국) | **네이버 뉴스 RSS** | 무료 |
 
 ### Infrastructure
-| 역할 | 기술 | 선택 이유 |
-|------|------|-----------|
-| 컨테이너 | **Docker** | 환경 일치, 배포 표준 |
-| 오케스트레이션 | **Kubernetes (K8s)** | 자동 스케일링, 자가복구, 무중단 배포 |
-| CI | **GitHub Actions** | 빌드·테스트·이미지 빌드+Harbor 푸시 자동화 |
-| CD | **ArgoCD** | GitOps 방식, K8s 매니페스트 변경 감지 → 자동 배포 |
-| 이미지 레지스트리 | **Harbor** (로컬 self-hosted) | 사내 이미지 관리, 보안 스캔, 외부 의존 없음 |
-| 모니터링 | **Prometheus + Grafana** | K8s 표준 모니터링 스택, 서비스별 메트릭 대시보드 |
-| 로그 | **ELK Stack** | 분산 로그 수집/분석 |
+| 역할 | 기술 |
+|------|------|
+| 컨테이너 | Docker |
+| 오케스트레이션 | Kubernetes (K8s) |
+| CI | GitHub Actions (self-hosted runner) |
+| CD | ArgoCD (GitOps) |
+| 이미지 레지스트리 | Harbor (self-hosted) |
+| 모니터링 | Prometheus + Grafana |
 
 ---
 
 ## Phase 1 — FastAPI 백엔드 (완료 ✅)
 
-### 완료된 항목
 - [x] FastAPI 서버 (`services/api/`)
-- [x] TimescaleDB 연동 (`services/api/db/`)
+- [x] TimescaleDB 연동
 - [x] REST API 엔드포인트 (`/api/v1/anomalies`, `/sectors`, `/analyze`)
 - [x] WebSocket 실시간 이상값 브로드캐스트 (`/ws/live`)
 - [x] APScheduler 60분마다 자동 분석
@@ -188,350 +184,219 @@ project/
 
 ## Phase 2 — 프론트엔드 대시보드 (완료 ✅)
 
-### 완료된 항목
 - [x] Next.js 14 App Router + Tailwind CSS
 - [x] 섹터 히트맵 (이상값 빈도 색상 표현)
 - [x] 이상값 목록 실시간 업데이트 (WebSocket)
-- [x] 종목 클릭 → 분봉 가격 차트 (실제 가격선 + 이상값 마커, 1D/3D/5D 기간 선택)
+- [x] 분봉 가격 차트 (실제 가격선 + 이상값 마커, 1D/3D/5D 기간 선택)
 - [x] 종목 검색바 — 기업명/티커 코드로 임의 종목 조회
-- [x] 기업명 표시 — 티커 코드 대신 기업명 우선 표시 (NVDA → NVIDIA)
+- [x] 기업명 표시 — NVDA → NVIDIA, KR:005930 → 삼성전자 (KR: 접두사 정규화)
 - [x] AI 분석 리포트 한국어/영어 탭 전환
 - [x] 수동 분석 트리거 + 진행 상태 표시
+- [x] AI 분석 없음 / 미선택 상태 구분 표시
 
 ---
 
 ## Phase 3 — Kafka 파이프라인 (완료 ✅)
 
-### 목표
-데이터 수집 → 분석 → 저장 → 알림을 완전히 비동기 파이프라인으로 분리.
-`services/api/services/pipeline.py` 안에 순차 실행되던 로직을 각 서비스로 분리.
-
 ### Kafka Topic 설계
 ```
-stock.raw.us        미국 1분봉 배치 (yfinance, 60초 루프)    — key: "batch"
-stock.raw.kr        한국 1분봉 배치 (KIS WebSocket 집계)     — key: "realtime"
-anomaly.detected    이상값 감지 결과                        — key: ticker
-news.fetched        뉴스 수집 완료 이벤트                    — key: ticker
-analysis.completed  AI 분석 완료 결과                       — key: ticker
+stock.raw.us        미국 1분봉 배치 (yfinance, 60초 루프)
+stock.raw.kr        한국 1분봉 배치 (KIS WebSocket 집계)
+anomaly.detected    이상값 감지 결과
+news.fetched        뉴스 수집 완료 이벤트
+analysis.completed  AI 분석 완료 결과
 ```
-
-### 섹터 구성 전략 (ETF + 시가총액 상위주)
-
-개별 종목의 예측 불가 이벤트(계약 분쟁, 스캔들 등) 노이즈를 제거하고
-**섹터 전체 방향성**에 집중하는 설계.
-
-| 역할 | 설명 | 예시 |
-|------|------|------|
-| **섹터 ETF** | 섹터 체온계 — ETF 이상값 = 섹터 이벤트 확정 | SMH(반도체), XLF(금융), LIT(배터리) |
-| **시가총액 상위주** | 확인 신호 + 알파 — ETF와 함께 움직이면 강한 시그널 | NVDA, TSM, 삼성전자, SK하이닉스 |
-
-**10개 섹터 구성:**
-
-| 섹터 | US ETF | KR ETF | 대표 종목 (US / KR) |
-|------|--------|--------|-------------------|
-| 반도체 | SMH, SOXX | KODEX 반도체(091160) | NVDA, TSM / 삼성전자, SK하이닉스 |
-| 기술/SW | XLK, QQQ | KODEX IT(098560) | MSFT, AAPL / NAVER, 카카오 |
-| 금융 | XLF, KRE | KODEX 은행(091170) | JPM, BAC / KB금융, 신한지주 |
-| 에너지 | XLE, XOP | KODEX 에너지화학(117460) | XOM, CVX / S-Oil, SK이노베이션 |
-| 헬스케어 | XLV, IBB | KODEX 바이오(244580) | UNH, LLY / 삼성바이오, 셀트리온 |
-| 전기차/배터리 | LIT, DRIV | KODEX 2차전지(305720) | TSLA, GM / LG에너지, 삼성SDI |
-| 방산/항공 | ITA, XAR | TIGER 우주방산(475050) | LMT, RTX / 한화에어로, 한국항공우주 |
-| 소재/철강 | XLB, PICK | KODEX 철강(138540) | FCX, LIN / POSCO, 고려아연 |
-| 부동산 | XLRE, VNQ | TIGER 리츠(352560) | AMT, PLD / 현대건설, 삼성물산 |
-| 소비재 | XLY, XLP | KODEX 200중소형(266390) | AMZN, WMT / 이마트, 롯데쇼핑 |
-
-**ETF 인식 이벤트 분류 로직:**
-```
-ETF 여러 개 동시 이상값    → MARKET  (시장 전체 이벤트, 강제)
-해당 섹터 ETF 이상값       → SECTOR  (섹터 이벤트, 강제 상향)
-여러 개별 종목 함께 움직임 → SECTOR
-그 외                      → INDIVIDUAL
-```
-
-### 데이터 수집 방식
-| 시장 | 방식 | 주기 | 서비스 | 실행 환경 |
-|------|------|------|--------|----------|
-| 미국 (US) | yfinance 1분봉 polling | 60초 루프 | `stock-collector` | Docker |
-| 한국 (KR) | 한국투자증권 KIS WebSocket 실시간 체결 → 1분봉 집계 | 체결 즉시 수신 | `kis-bridge` | Docker |
 
 ### 서비스별 Kafka 흐름
 ```
-[stock-collector]   →  stock.raw.us 발행 (1분봉, 60초 루프)         [Docker]
-[kis-bridge]        →  stock.raw.kr 발행 (실시간→1분봉 집계)         [Docker]
-[anomaly-detector]  ←  stock.raw.* 구독  →  anomaly.detected 발행
-[news-fetcher]      ←  anomaly.detected 구독  →  news.fetched 발행
-[ai-analyzer]       ←  news.fetched 구독  →  analysis.completed 발행
-[api (db-writer)]   ←  analysis.completed 구독  →  DB 저장 + WS 브로드캐스트
-[notifier]          ←  analysis.completed 구독  →  Slack 알림 발송
+[stock-collector]   →  stock.raw.us
+[kis-bridge]        →  stock.raw.kr
+[anomaly-detector]  ←  stock.raw.*  →  anomaly.detected
+[news-fetcher]      ←  anomaly.detected  →  news.fetched
+[ai-analyzer]       ←  news.fetched  →  analysis.completed
+[api]               ←  analysis.completed  →  DB 저장 + WS 브로드캐스트
+[notifier]          ←  analysis.completed  →  Slack 알림
 ```
 
-### 메시지 스키마
-| Topic | 주요 필드 |
-|-------|-----------|
-| `stock.raw.*` | `market, timestamp, stocks: {ticker: {"YYYY-MM-DD HH:MM:SS": {OHLCV}}}` |
-| `anomaly.detected` | `ticker, date, bar_timestamp, return_pct, zscore, direction, is_etf, event_type, sector, sector_peer_count, moving_sector_count` |
-| `news.fetched` | anomaly 필드 + `news_en[], news_kr[], news_text` |
-| `analysis.completed` | news 필드 - news_text + `analysis_ko, analysis_en` |
+### Gemini 응답 파싱
+- 정상: `---[한국어 분석]---` / `---[English Analysis]---` 구분자로 분리
+- 구분자 누락 시: 존재하는 섹션만 저장, 없는 언어는 빈 문자열 (잘못된 fallback 수정됨)
 
-### 구현 완료 항목
-- [x] Kafka + Zookeeper 컨테이너 (`docker-compose.yml` 활성화)
-- [x] `stock-collector/main.py` — yfinance 1분봉, 60초 루프, stock.raw.us 발행
-- [x] `kis-bridge/main.py` — 한국투자증권 KIS WebSocket 실시간 체결 → 1분봉 집계 → stock.raw.kr 발행 (Docker)
-- [x] `anomaly-detector/main.py` — stock.raw.* 구독 → 탐지+분류 → anomaly.detected (`INTRADAY_RECENT_MINUTES` 필터)
-- [x] `news-fetcher/main.py` — anomaly.detected 구독 → 뉴스 수집 → news.fetched
-- [x] `ai-analyzer/main.py` — news.fetched 구독 → Gemini 분석 → analysis.completed
-- [x] `notifier/main.py` — analysis.completed 구독 → Slack Webhook 발송
-- [x] `api/main.py` — analysis.completed 구독 → DB 저장 + WebSocket 브로드캐스트
-- [x] `requirements.txt`에 `confluent-kafka>=2.4.0` 추가
-- [x] API는 Kafka 없을 때 APScheduler pipeline.py fallback 유지 (하위 호환)
+### 10개 섹터 구성
 
-### kis-bridge 실행 방법
-```bash
-# 1. 한국투자증권 Open API 앱키 발급
-#    https://apiportal.koreainvestment.com → 내 앱 → 앱 등록
-
-# 2. .env에 추가
-KIS_APP_KEY=<앱키>
-KIS_APP_SECRET=<앱시크릿>
-KIS_MOCK=false   # 모의투자 테스트 시 true
-
-# 3. Docker로 실행 (docker-compose 포함)
-docker-compose up kis-bridge
-
-# 또는 직접 실행
-pip install aiohttp websockets confluent-kafka
-KAFKA_BOOTSTRAP_SERVERS=localhost:9092 python services/kis-bridge/main.py
-```
-
-| 항목 | 실전 | 모의투자 |
-|------|------|----------|
-| WebSocket URL | `wss://openapi.koreainvestment.com:21000` | `wss://openapiwss.kis.uat.koreainvestment.com:21000` |
-| TR ID | `H0STCNT0` | `H0STCNS0` |
-| 앱키 | 실전투자용 별도 발급 | 모의투자용 별도 발급 |
-
-### 이상값 탐지 임계값 (장중 vs 일별)
-| 모드 | `ANOMALY_THRESHOLD_PERCENT` | `INTRADAY_RECENT_MINUTES` | 설명 |
-|------|---------------------------|--------------------------|------|
-| 장중 1분봉 | `1.5` | `5` | 1분 내 1.5% 이상 변동, 최근 5분 bar만 처리 |
-| 일별 (fallback) | `7.5` | `0` | 하루 7.5% 이상 변동, 5일 이내 데이터 처리 |
-
-### 장애 격리 특성
-- **ai-analyzer 중단** → news-fetcher, anomaly-detector, stock-collector 정상 동작 (메시지 큐에 쌓임)
-- **api 중단** → 파이프라인 계속 처리, api 재시작 후 큐에서 이어서 소비
-- **notifier 중단** → DB 저장 + WS 브로드캐스트는 api가 독립 처리
+| 섹터 | US ETF | KR ETF | 대표 종목 |
+|------|--------|--------|-----------|
+| 반도체 | SMH, SOXX | KODEX 반도체 | NVDA, TSM / 삼성전자, SK하이닉스 |
+| 기술/SW | XLK, QQQ | KODEX IT | MSFT, AAPL / NAVER, 카카오 |
+| 금융 | XLF, KRE | KODEX 은행 | JPM, BAC / KB금융, 신한지주 |
+| 에너지 | XLE, XOP | KODEX 에너지화학 | XOM, CVX / S-Oil, SK이노베이션 |
+| 헬스케어 | XLV, IBB | KODEX 바이오 | UNH, LLY / 삼성바이오, 셀트리온 |
+| 전기차/배터리 | LIT, DRIV | KODEX 2차전지 | TSLA, GM / LG에너지, 삼성SDI |
+| 방산/항공 | ITA, XAR | TIGER 우주방산 | LMT, RTX / 한화에어로, 한국항공우주 |
+| 소재/철강 | XLB, PICK | KODEX 철강 | FCX, LIN / POSCO, 고려아연 |
+| 부동산 | XLRE, VNQ | TIGER 리츠 | AMT, PLD / 현대건설, 삼성물산 |
+| 소비재 | XLY, XLP | KODEX 200중소형 | AMZN, WMT / 이마트, 롯데쇼핑 |
 
 ---
 
-## Phase 4 — Docker & Kubernetes (2~3개월)
+## Phase 4 — Docker & Kubernetes (완료 ✅)
 
 ### K8s 리소스 구성
 ```yaml
-# 상태 없는 서비스 (Deployment)
-api-server          replicas: 3   # 로드밸런싱
-ai-analyzer         replicas: 2   # Gemini API 병렬 처리
-anomaly-detector    replicas: 2
-frontend            replicas: 2
+# Deployment
+api             replicas: 1   # WebSocket 인메모리 관리 (Redis pub/sub 도입 전 단일)
+ai-analyzer     replicas: 2   # HPA: CPU 70% → 최대 5개
+anomaly-detector replicas: 2
+frontend        replicas: 2
 
-# 상태 있는 서비스 (StatefulSet)
-kafka               replicas: 3   # 브로커 3개 클러스터
-timescaledb         replicas: 1   # Primary + 1 Replica
-redis               replicas: 1
+# StatefulSet
+kafka           replicas: 3
+timescaledb     replicas: 1
+redis           replicas: 1
 
-# 상시 실행 Deployment (1분봉 루프)
-stock-collector     replicas: 1   # 60초 루프, yfinance 1분봉
-kis-bridge          replicas: 1   # KIS WebSocket 상시 연결
-
-# 자동 스케일링 (HPA)
-ai-analyzer         CPU > 70% → Pod 자동 추가 (최대 5개)
-api-server          요청 > 100rps → Pod 자동 추가
+# 상시 실행
+stock-collector replicas: 1
+kis-bridge      replicas: 1
 ```
 
-### CI/CD 흐름 (GitHub Actions → Harbor → ArgoCD → K8s)
+### CI/CD 흐름
 ```
 코드 push (main)
-    │
-    ▼
-GitHub Actions CI                     ← CI 담당
-    ├── 테스트 실행
-    ├── Docker 이미지 빌드 (서비스별 독립)
-    │   ├── harbor.local/stock/api:$SHA
-    │   ├── harbor.local/stock/frontend:$SHA
-    │   ├── harbor.local/stock/stock-collector:$SHA
-    │   ├── harbor.local/stock/kis-bridge:$SHA
-    │   ├── harbor.local/stock/anomaly-detector:$SHA
-    │   ├── harbor.local/stock/news-fetcher:$SHA
-    │   ├── harbor.local/stock/ai-analyzer:$SHA
-    │   └── harbor.local/stock/notifier:$SHA
-    ├── Harbor (로컬 레지스트리)에 push   ← 이미지 저장소
-    └── k8s/ 매니페스트의 이미지 태그 업데이트 후 커밋
-            │
-            ▼
-    ArgoCD (GitOps)                   ← CD 담당
-    ├── k8s/ 디렉토리 변경 감지 (Git 폴링/Webhook)
-    ├── K8s 클러스터에 자동 Sync
-    │
-    ▼
-    K8s Rolling Update → 다운타임 0
+    → GitHub Actions: 이미지 빌드 → Harbor push → k8s 태그 업데이트 commit
+    → ArgoCD: k8s/ 변경 감지 → K8s Rolling Update (다운타임 0)
 ```
 
-### Harbor 레지스트리 구성
-```
-harbor.local/                         # 로컬 Harbor 인스턴스
-├── stock/                            # 프로젝트 네임스페이스
-│   ├── api:latest / api:<git-sha>
-│   ├── frontend:latest / frontend:<git-sha>
-│   ├── stock-collector:latest
-│   ├── kis-bridge:latest
-│   ├── anomaly-detector:latest
-│   ├── news-fetcher:latest
-│   ├── ai-analyzer:latest
-│   └── notifier:latest
-```
-- GitHub Actions에서 Harbor로 push 시 `HARBOR_URL`, `HARBOR_USER`, `HARBOR_PASSWORD` Secret 사용
-- Harbor 내장 Trivy로 이미지 취약점 자동 스캔
+### Secrets 구성
+| Secret | 용도 |
+|--------|------|
+| `stock-db-secret` | DB 접속 정보 |
+| `stock-api-secrets` | GEMINI_API_KEY, NEWS_API_KEY |
+| `stock-kis-secret` | KIS_APP_KEY, KIS_APP_SECRET, KIS_MOCK |
 
-### ArgoCD 앱 구성
-```yaml
-# argocd/application.yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: stock-platform
-  namespace: argocd
-spec:
-  source:
-    repoURL: <git-repo-url>
-    targetRevision: main
-    path: k8s/
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: stock
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-```
-
-### Prometheus + Grafana 모니터링 구성
-```
-Prometheus
-├── kube-state-metrics          K8s 리소스 상태
-├── node-exporter               노드 CPU/메모리/디스크
-├── kafka-exporter              Kafka 토픽 lag, 처리량
-└── FastAPI /metrics 엔드포인트  서비스별 요청 수, 지연시간
-
-Grafana 대시보드
-├── K8s 클러스터 개요
-├── 서비스별 요청 현황 (api, ai-analyzer 등)
-├── Kafka 파이프라인 처리량 및 지연 (lag)
-└── 이상값 감지 현황 (DB 쿼리 기반 패널)
-```
-
-### Phase 4 완료 기준
-- [x] K8s 매니페스트 작성 (`k8s/` 디렉토리: Deployment, Service, Ingress, HPA, ConfigMap, Secret)
-- [x] GitHub Actions → Harbor로 서비스별 이미지 자동 빌드 + 푸시 (`.github/workflows/docker-build.yml`)
-- [x] ArgoCD 설치 및 GitOps 파이프라인 연결 (`argocd/application.yaml`)
-- [x] Prometheus + Grafana 모니터링 대시보드 (`monitoring/` 디렉토리)
-- [x] Harbor 로컬 레지스트리 구성 문서화 (`SECRETS.md`)
+> `stock-kis-secret`은 api deployment에도 주입 — KR 1D 분봉 조회에 사용
 
 ---
 
-## 8. 최종 아키텍처 다이어그램
+## Phase 5 — 개인화 서비스 POC (진행중 🔄)
+
+### 목표
+기관 수준의 AI 분석을 **개인 투자자 관점**으로 재해석. 내 포트폴리오에서 이상값이 발생하면 즉시 AI가 원인을 분석하고 손익 영향을 계산해주는 서비스.
+
+### 구현 완료 항목
+- [x] **관심 종목 (Watchlist)** — ★ 버튼으로 추가/제거, Zustand persist (localStorage 영속)
+- [x] **내 종목만 필터** — 이상값 목록에서 관심 종목 이상값만 표시
+- [x] **포트폴리오 패널** — 수량 + 평균단가 입력
+- [x] **실시간 손익 계산** — KIS REST API / yfinance로 현재가 조회 (60초 자동 갱신)
+- [x] **PortfolioPanel 레이아웃** — 기존 3열 상단 배치 (섹터히트맵 / 이상값목록 / 포트폴리오)
+
+### 향후 추가 예정 항목
+- [ ] **알림 임계값 설정** — 종목별 몇 % 이상 변동 시에만 알림
+- [ ] **목표가 / 손절가 설정** — 해당 가격 도달 시 하이라이트
+- [ ] **포트폴리오 섹터 분산 차트** — 보유 종목의 섹터 비중 파이 차트
+- [ ] **이상값 히트율 통계** — 과거 이상값 발생 후 n일 뒤 수익률 통계
+- [ ] **이메일 / 카카오 알림** — 내 종목 이상값 발생 시 외부 채널 발송
+- [ ] **회원가입 / 로그인** — 서버사이드 포트폴리오 저장 (현재는 localStorage)
+
+---
+
+## 9. 최종 아키텍처 다이어그램
 
 ```
                     [ 사용자 브라우저 ]
                            │
                     ┌──────▼──────┐
                     │   Ingress   │  (nginx)
-                    │  (K8s)      │
                     └──┬───────┬──┘
                        │       │
               ┌────────▼─┐ ┌───▼────────────┐
               │ Frontend  │ │  API Server    │
-              │ Next.js   │ │  FastAPI × 3   │
-              │ (Pod × 2) │ │                │
+              │ Next.js   │ │  FastAPI       │
+              │           │ │                │
               └───────────┘ └───┬────────┬───┘
                                 │  WebSocket
                          ┌──────▼──────────────────────────┐
                          │           Apache Kafka           │
-                         │  (StatefulSet × 3 브로커)        │
                          └──┬──────┬──────┬──────┬─────────┘
                     ┌───────┘  ┌───┘  ┌───┘  └──────────┐
               ┌─────▼───┐ ┌────▼──┐ ┌──▼──────┐ ┌───────▼──┐
               │Stock    │ │News   │ │AI       │ │Notifier  │
-              │Collector│ │Fetcher│ │Analyzer │ │슬랙/메일  │
-              │Detector │ │(Pod×2)│ │(Pod × 2)│ │(Pod × 1) │
-              │(Pod × 2)│ └───────┘ └────┬────┘ └──────────┘
-              └────┬────┘                │
-                   │                     │
-              ┌────▼─────────────────────▼──────────────────┐
-              │                Databases                     │
-              │  ┌──────────────┐  ┌───────┐               │
-              │  │ TimescaleDB  │  │ Redis │               │
-              │  │ (주가/이상값) │  │(캐시) │               │
-              │  └──────────────┘  └───────┘               │
-              └──────────────────────────────────────────────┘
-                         │
-              ┌──────────▼──────────┐
-              │  Monitoring Stack   │
-              │  Prometheus+Grafana │
-              └─────────────────────┘
+              │Collector│ │Fetcher│ │Analyzer │ │(Slack)   │
+              │+Detector│ │       │ │(Gemini) │ │          │
+              └────┬────┘ └───────┘ └─────────┘ └──────────┘
+                   │
+              ┌────▼──────────────────────┐
+              │  TimescaleDB  │  Redis     │
+              └───────────────────────────┘
+                   │
+              ┌────▼──────────────────┐
+              │  Prometheus + Grafana │
+              └───────────────────────┘
 ```
 
 ---
 
-## 9. DB 스키마 설계
+## 10. DB 스키마 설계
 
-### TimescaleDB (주가 & 이상값)
+### TimescaleDB
 ```sql
 CREATE TABLE anomalies (
-    id              SERIAL PRIMARY KEY,
-    detected_at     TIMESTAMPTZ DEFAULT NOW(),
-    ticker          TEXT        NOT NULL,
-    anomaly_date    DATE        NOT NULL,
-    bar_timestamp   TEXT,                    -- 1분봉 정확한 시각 (YYYY-MM-DDTHH:MM:SS)
-    return_pct      DECIMAL     NOT NULL,
-    zscore          DECIMAL,
-    close_price     DECIMAL,
-    volume          BIGINT,
-    direction       TEXT,                    -- '급등' or '급락'
-    is_etf          BOOLEAN     DEFAULT FALSE, -- 섹터 ETF 여부
-    event_type      TEXT,                    -- 'INDIVIDUAL', 'SECTOR', 'MARKET'
-    sector          TEXT,
+    id                   SERIAL PRIMARY KEY,
+    detected_at          TIMESTAMPTZ DEFAULT NOW(),
+    ticker               VARCHAR(20) NOT NULL,
+    anomaly_date         DATE        NOT NULL,
+    bar_timestamp        VARCHAR(30),           -- 1분봉 정확한 시각
+    return_pct           DOUBLE PRECISION NOT NULL,
+    zscore               DOUBLE PRECISION,
+    close_price          DOUBLE PRECISION,
+    volume               BIGINT,
+    direction            VARCHAR(10) NOT NULL,  -- '급등' or '급락'
+    is_etf               BOOLEAN DEFAULT FALSE,
+    event_type           VARCHAR(20) NOT NULL,  -- 'INDIVIDUAL', 'SECTOR', 'MARKET'
+    sector               VARCHAR(100),
     sector_peer_count    INT,
     moving_sector_count  INT
 );
 
 CREATE TABLE analysis_results (
     id          SERIAL PRIMARY KEY,
-    anomaly_id  INT REFERENCES anomalies(id),
+    anomaly_id  INT UNIQUE REFERENCES anomalies(id),
     created_at  TIMESTAMPTZ DEFAULT NOW(),
-    analysis_ko TEXT,
-    analysis_en TEXT,
-    news_en     JSONB,
-    news_kr     JSONB
+    analysis_ko TEXT NOT NULL,
+    analysis_en TEXT NOT NULL,
+    news_en     JSON DEFAULT '[]',
+    news_kr     JSON DEFAULT '[]'
 );
 ```
 
+> `anomalies`에 `analysis_id` 컬럼 없음.
+> API의 `AnomalyResponse`는 `has_analysis: bool` (JOIN 여부)을 반환.
+> 프론트엔드는 `has_analysis=true`이면 `anomaly.id`로 `/analysis` 엔드포인트 호출.
+
 ---
 
-## 10. API 명세
+## 11. API 명세
 
 ```
 GET  /api/v1/anomalies
      Query: ?days=7&sector=반도체&event_type=SECTOR&limit=20
+     Response: [{ id, ticker, anomaly_date, return_pct, direction, event_type,
+                  sector, has_analysis, detected_at, ... }]
 
 GET  /api/v1/anomalies/{ticker}/history
      Query: ?days=30
 
 GET  /api/v1/anomalies/{anomaly_id}/analysis
+     Response: { id, anomaly_id, analysis_ko, analysis_en, news_en[], news_kr[] }
 
 GET  /api/v1/sectors/trending
      Query: ?days=7
      Response: [{ sector, anomaly_count, avg_return_pct, up_count, down_count, hot_tickers }]
 
 GET  /api/v1/stocks/{ticker}/candles
-     Query: ?days=1  (1~5일, 미국 1분봉 / 한국 일봉)
+     Query: ?days=1  (1~5일)
+     - US: yfinance 1분봉
+     - KR days=1: KIS REST API 분봉 (inquire-time-itemchartprice, 14회 페이징)
+     - KR days>1: pykrx 일봉
      Response: [{ timestamp, open, high, low, close, volume }]
 
 POST /api/v1/analyze/trigger
@@ -546,11 +411,58 @@ WS   /ws/live
 
 ---
 
+## 12. 향후 로드맵
+
+### Phase 6 — 사용자 인증 & 서버사이드 포트폴리오
+현재 포트폴리오는 localStorage에만 저장. 로그인 후 서버에 저장하면 멀티 디바이스 지원 가능.
+
+- [ ] JWT 기반 회원가입 / 로그인
+- [ ] `users`, `watchlists`, `portfolios` DB 테이블 추가
+- [ ] 서버사이드 포트폴리오 CRUD API
+
+### Phase 7 — 알림 채널 확장
+현재 Slack만 지원. 개인 투자자용 채널 추가.
+
+- [ ] 이메일 알림 (내 종목 이상값 발생 시)
+- [ ] 카카오 알림톡 연동
+- [ ] 브라우저 Push Notification (PWA)
+- [ ] 종목별 알림 임계값 설정 (예: 5% 이상만)
+
+### Phase 8 — 포트폴리오 분석 고도화
+
+- [ ] 섹터 분산 현황 파이 차트
+- [ ] 목표가 / 손절가 알림
+- [ ] 과거 이상값 → n일 후 수익률 통계 (시그널 신뢰도 지표)
+- [ ] 보유 종목 이상값 발생 시 AI 리포트에 포트폴리오 영향 자동 추가
+
+### Phase 9 — 데이터 고도화
+
+- [ ] 자체 이상값 탐지 모델 (단순 Z-score → ML 기반)
+- [ ] 이상값 예측 (발생 전 선행 지표 감지)
+- [ ] 공시/DART 연동
+- [ ] 옵션 IV (내재변동성) 데이터 추가
+
+### Phase 10 — 수익화
+
+| 티어 | 기능 | 가격 |
+|------|------|------|
+| 무료 | 이상값 목록 (일 10건), 관심 종목 5개 | - |
+| 프리미엄 | 무제한 + AI 리포트 + 포트폴리오 추적 + 알림 | 월 2~3만원 |
+| 기업용 | API 제공 + 커스텀 섹터 + 전용 지원 | 월 협의 |
+
+---
+
 ## 개발 우선순위 요약
 
 | 단계 | 상태 | 핵심 가치 |
 |------|------|-----------|
-| Phase 1 (FastAPI + DB) | ✅ 완료 | 결과가 DB에 쌓이고 API로 조회 가능 |
-| Phase 2 (Frontend)     | ✅ 완료 | 시각적 대시보드, 실시간 알림 |
-| Phase 3 (Kafka)        | ✅ 완료 | 안정적인 파이프라인, 확장성 확보 |
-| Phase 4 (K8s + CI/CD)  | ✅ 완료 | GitHub Actions CI → Harbor → ArgoCD CD → K8s, Prometheus+Grafana 모니터링 |
+| Phase 1 (FastAPI + DB) | ✅ 완료 | DB 저장 + API 조회 |
+| Phase 2 (Frontend) | ✅ 완료 | 시각적 대시보드 + 실시간 알림 |
+| Phase 3 (Kafka) | ✅ 완료 | 안정적 파이프라인 + 확장성 |
+| Phase 4 (K8s + CI/CD) | ✅ 완료 | GitOps 자동 배포 + 모니터링 |
+| Phase 5 (개인화 POC) | 🔄 진행중 | 관심 종목 + 포트폴리오 손익 |
+| Phase 6 (인증) | 📋 예정 | 멀티 유저 + 서버사이드 저장 |
+| Phase 7 (알림 확장) | 📋 예정 | 카카오/이메일 + 임계값 설정 |
+| Phase 8 (포트폴리오 고도화) | 📋 예정 | 분산 차트 + 시그널 신뢰도 |
+| Phase 9 (데이터 고도화) | 📋 예정 | ML 탐지 + 공시 연동 |
+| Phase 10 (수익화) | 📋 예정 | 무료/유료 티어 + 기업용 API |

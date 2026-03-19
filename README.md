@@ -11,8 +11,11 @@
 - **AI 원인 분석** — Gemini 2.5 Flash로 관련 뉴스 수집 후 한국어 + 영어 리포트 생성
 - **실시간 대시보드** — WebSocket 기반 섹터 히트맵, 이상값 목록, AI 분석 리포트
 - **분봉 차트** — 실제 가격선 위에 이상값 발생 위치를 마커로 표시 (1D/3D/5D 선택)
+  - 미국: yfinance 1분봉 / 한국 1D: KIS REST API 분봉 / 한국 3D·5D: pykrx 일봉
 - **종목 검색** — 이상값 외 임의 종목을 기업명/티커 코드로 검색해 차트 조회
-- **기업명 표시** — 티커 코드 대신 기업명으로 종목 식별 (NVDA → NVIDIA)
+- **기업명 표시** — 티커 코드 대신 기업명으로 종목 식별 (NVDA → NVIDIA, KR:005930 → 삼성전자)
+- **관심 종목 (Watchlist)** — ★로 종목 추가, 내 종목만 필터, 브라우저 재시작 후에도 유지
+- **포트폴리오 손익 추적** — 수량·평균단가 입력 → 현재가 실시간 조회 → 손익 자동 계산
 - **Slack 알림** — 이상값 감지 즉시 분석 결과 발송
 
 ---
@@ -84,17 +87,21 @@
 | 역할 | 기술 |
 |------|------|
 | 프레임워크 | Next.js 14 (App Router) |
-| 상태관리 | Zustand |
+| 상태관리 | Zustand (+ persist 미들웨어) |
 | 차트 | Recharts (분봉 가격선 + 이상값 마커) |
 | 실시간 | WebSocket (native) |
 | 스타일 | Tailwind CSS |
-| 종목 검색 | 클라이언트 사이드 (tickerNames.ts 매핑) |
+| 종목 검색 | 클라이언트 사이드 (tickerNames.ts, KR: 접두사 정규화) |
+| 관심 종목 | Zustand persist → localStorage 영속 |
+| 포트폴리오 | 현재가 실시간 조회 + 손익 자동 계산 |
 
 ### Data
 | 역할 | 기술 |
 |------|------|
 | 미국 주가 | yfinance 1분봉 polling |
-| 한국 주가 | 한국투자증권 KIS WebSocket |
+| 한국 실시간 | 한국투자증권 KIS WebSocket |
+| 한국 분봉 차트 | KIS REST API (inquire-time-itemchartprice) |
+| 한국 일봉 | pykrx |
 | 영문 뉴스 | NewsAPI + Google RSS |
 | 한국 뉴스 | 네이버 뉴스 RSS |
 
@@ -245,7 +252,10 @@ GET  /api/v1/sectors/trending
      → [{ sector, anomaly_count, avg_return_pct, up_count, down_count, hot_tickers }]
 
 GET  /api/v1/stocks/{ticker}/candles
-     ?days=1  (1~5일, 미국 1분봉 / 한국 일봉)
+     ?days=1  (1~5일)
+     → 미국: yfinance 1분봉
+     → 한국 days=1: KIS REST API 분봉
+     → 한국 days>1: pykrx 일봉
      → [{ timestamp, open, high, low, close, volume }]
 
 POST /api/v1/analyze/trigger
@@ -286,11 +296,15 @@ StockPulse/
 │   └── notifier/            # Slack 알림
 ├── frontend/                # Next.js 14 대시보드
 │   ├── app/components/
-│   │   ├── SearchBar.tsx    # 종목 검색 (신규)
-│   │   ├── StockChart.tsx   # 분봉 차트 + 이상값 마커 (개편)
+│   │   ├── SearchBar.tsx      # 종목 검색 + ★ 관심 종목 토글
+│   │   ├── StockChart.tsx     # 분봉 차트 + 이상값 마커 (1D/3D/5D)
+│   │   ├── AnomalyList.tsx    # 이상값 목록 (★버튼, 내 종목만 필터)
+│   │   ├── AnalysisPanel.tsx  # AI 분석 한/영 탭
+│   │   ├── PortfolioPanel.tsx # 관심 종목 + 포트폴리오 손익
 │   │   └── ...
 │   └── lib/
-│       └── tickerNames.ts   # 티커↔기업명 매핑 (신규)
+│       ├── tickerNames.ts     # 티커↔기업명 매핑 (KR: 접두사 정규화)
+│       └── watchlistStore.ts  # 관심 종목 + 포트폴리오 (persist)
 ├── k8s/                     # Kubernetes 매니페스트
 ├── argocd/                  # ArgoCD GitOps 설정
 ├── monitoring/              # Prometheus + Grafana 대시보드
