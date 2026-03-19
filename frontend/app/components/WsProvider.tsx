@@ -27,7 +27,7 @@ export default function WsProvider({ children }: { children: React.ReactNode }) 
         sector_peer_count: null,
         moving_sector_count: null,
         detected_at: new Date().toISOString(),
-        analysis_id: null,
+        has_analysis: false,
         bar_timestamp: null,
       }
       prependAnomaly(partial)

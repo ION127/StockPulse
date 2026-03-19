@@ -13,7 +13,7 @@ export interface Anomaly {
   sector_peer_count: number | null
   moving_sector_count: number | null
   detected_at: string
-  analysis_id: number | null
+  has_analysis: boolean
 }
 
 export interface Analysis {

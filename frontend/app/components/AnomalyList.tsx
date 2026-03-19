@@ -58,7 +58,7 @@ export default function AnomalyList() {
 
   function handleClick(a: Anomaly) {
     setSelectedTicker(a.ticker)
-    if (a.analysis_id) setSelectedAnomalyId(a.analysis_id)
+    if (a.has_analysis) setSelectedAnomalyId(a.id)
   }
 
   return (
