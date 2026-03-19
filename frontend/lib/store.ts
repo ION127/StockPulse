@@ -42,6 +42,10 @@ interface StoreState {
   // 분석 실행 중인 Job ID
   runningJobId: string | null
   setRunningJobId: (id: string | null) => void
+
+  // 로그인 모달 전역 제어
+  openAuthModal: boolean
+  setOpenAuthModal: (v: boolean) => void
 }
 
 export const useStore = create<StoreState>((set) => ({
@@ -76,4 +80,7 @@ export const useStore = create<StoreState>((set) => ({
 
   runningJobId: null,
   setRunningJobId: (runningJobId) => set({ runningJobId }),
+
+  openAuthModal: false,
+  setOpenAuthModal: (openAuthModal) => set({ openAuthModal }),
 }))

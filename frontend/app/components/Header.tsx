@@ -1,15 +1,21 @@
 'use client'
 
 import { useStore } from '@/lib/store'
+import { useAuthStore } from '@/lib/authStore'
 import { api } from '@/lib/api'
 import { useState } from 'react'
 import SearchBar from './SearchBar'
+import AuthModal from './AuthModal'
 
 export default function Header({ lastUpdated }: { lastUpdated: string }) {
   const wsConnected = useStore((s) => s.wsConnected)
   const setRunningJobId = useStore((s) => s.setRunningJobId)
   const runningJobId = useStore((s) => s.runningJobId)
   const [triggering, setTriggering] = useState(false)
+
+  const { user, logout } = useAuthStore()
+  const openAuthModal = useStore((s) => s.openAuthModal)
+  const setOpenAuthModal = useStore((s) => s.setOpenAuthModal)
 
   async function triggerAnalysis() {
     setTriggering(true)
@@ -51,7 +57,30 @@ export default function Header({ lastUpdated }: { lastUpdated: string }) {
         >
           {triggering ? `분석 중... (${runningJobId})` : '수동 분석 실행'}
         </button>
+
+        {/* 로그인 / 유저 정보 */}
+        {user ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-300">{user.email}</span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-900 text-indigo-300">{user.tier}</span>
+            <button
+              onClick={logout}
+              className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded font-medium transition-colors"
+            >
+              로그아웃
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setOpenAuthModal(true)}
+            className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded font-medium transition-colors"
+          >
+            로그인
+          </button>
+        )}
       </div>
+
+      {openAuthModal && <AuthModal onClose={() => setOpenAuthModal(false)} />}
     </header>
   )
 }

@@ -6,9 +6,37 @@ const BASE = typeof window === 'undefined'
   ? 'http://api-service:8000'
   : ''
 
+function getToken(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem('stockpulse-auth')
+    return raw ? JSON.parse(raw)?.state?.accessToken ?? null : null
+  } catch {
+    return null
+  }
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`API error ${res.status}: ${path}`)
+  return res.json()
+}
+
+async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getToken()
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? `API error ${res.status}`)
+  }
+  if (res.status === 204) return undefined as T
   return res.json()
 }
 
@@ -44,5 +72,56 @@ export const api = {
 
   getJobStatus(jobId: string) {
     return get<JobResponse>(`/api/v1/analyze/jobs/${jobId}`)
+  },
+
+  // ── 인증 ────────────────────────────────────────────────────────────
+  register(email: string, password: string) {
+    return authFetch<{ id: number; email: string; tier: string }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    })
+  },
+
+  login(email: string, password: string) {
+    return authFetch<{ access_token: string; refresh_token: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    })
+  },
+
+  getMe() {
+    return authFetch<{ id: number; email: string; tier: string }>('/auth/me')
+  },
+
+  // ── 관심 종목 ────────────────────────────────────────────────────────
+  getWatchlist() {
+    return authFetch<{ id: number; ticker: string; added_at: string }[]>('/api/v1/users/watchlist')
+  },
+
+  addWatchlist(ticker: string) {
+    return authFetch<{ id: number; ticker: string }>('/api/v1/users/watchlist', {
+      method: 'POST',
+      body: JSON.stringify({ ticker }),
+    })
+  },
+
+  removeWatchlist(ticker: string) {
+    return authFetch<void>(`/api/v1/users/watchlist/${ticker}`, { method: 'DELETE' })
+  },
+
+  // ── 포트폴리오 ───────────────────────────────────────────────────────
+  getPortfolio() {
+    return authFetch<{ id: number; ticker: string; quantity: number; avg_price: number }[]>('/api/v1/users/portfolio')
+  },
+
+  upsertPortfolio(ticker: string, quantity: number, avg_price: number) {
+    return authFetch<{ id: number; ticker: string }>('/api/v1/users/portfolio', {
+      method: 'POST',
+      body: JSON.stringify({ ticker, quantity, avg_price }),
+    })
+  },
+
+  removePortfolio(ticker: string) {
+    return authFetch<void>(`/api/v1/users/portfolio/${ticker}`, { method: 'DELETE' })
   },
 }

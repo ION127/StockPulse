@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useWatchlistStore } from '@/lib/watchlistStore'
 import { useStore } from '@/lib/store'
+import { useAuthStore } from '@/lib/authStore'
 import { api } from '@/lib/api'
 import { getCompanyName, hasCompanyName } from '@/lib/tickerNames'
 import clsx from 'clsx'
@@ -255,9 +256,36 @@ function PortfolioTab() {
 
 // ── 메인 패널 ────────────────────────────────────────────────────────────────
 
+function LoginPrompt() {
+  const setOpenAuthModal = useStore((s) => s.setOpenAuthModal)
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 py-8">
+      <p className="text-sm text-gray-400 text-center">
+        관심 종목과 포트폴리오는<br />로그인 후 사용할 수 있습니다
+      </p>
+      <button
+        onClick={() => setOpenAuthModal(true)}
+        className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 rounded-lg font-medium transition-colors"
+      >
+        로그인 / 회원가입
+      </button>
+    </div>
+  )
+}
+
 export default function PortfolioPanel() {
   const [tab, setTab] = useState<Tab>('watchlist')
   const { watchlist, portfolio } = useWatchlistStore()
+  const { user } = useAuthStore()
+
+  if (!user) {
+    return (
+      <div className="rounded-lg bg-gray-900 p-4 flex flex-col h-full">
+        <h2 className="text-sm font-semibold text-gray-300 mb-3 shrink-0">관심 종목 / 포트폴리오</h2>
+        <LoginPrompt />
+      </div>
+    )
+  }
 
   return (
     <div className="rounded-lg bg-gray-900 p-4 flex flex-col h-full">

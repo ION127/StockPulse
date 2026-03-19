@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useWatchlistStore } from '@/lib/watchlistStore'
+import { useAuthStore } from '@/lib/authStore'
 import clsx from 'clsx'
 import type { Anomaly } from '@/types'
 import { getCompanyName, hasCompanyName } from '@/lib/tickerNames'
@@ -23,16 +24,24 @@ function AnomalyRow({ anomaly, onClick }: { anomaly: Anomaly; onClick: () => voi
   const isUp = anomaly.return_pct > 0
   const { isWatched, addToWatchlist, removeFromWatchlist } = useWatchlistStore()
   const watched = isWatched(anomaly.ticker)
+  const { user } = useAuthStore()
+  const setOpenAuthModal = useStore((s) => s.setOpenAuthModal)
+
+  function handleStar(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!user) {
+      setOpenAuthModal(true)
+      return
+    }
+    watched ? removeFromWatchlist(anomaly.ticker) : addToWatchlist(anomaly.ticker)
+  }
 
   return (
     <div className="flex items-center gap-1 hover:bg-gray-800 rounded transition-colors border border-transparent hover:border-gray-700">
       <button
-        onClick={(e) => {
-          e.stopPropagation()
-          watched ? removeFromWatchlist(anomaly.ticker) : addToWatchlist(anomaly.ticker)
-        }}
+        onClick={handleStar}
         className={clsx('shrink-0 px-1.5 py-2 text-sm transition-colors', watched ? 'text-yellow-400' : 'text-gray-700 hover:text-gray-400')}
-        title={watched ? '관심 종목 제거' : '관심 종목 추가'}
+        title={user ? (watched ? '관심 종목 제거' : '관심 종목 추가') : '로그인 후 이용 가능'}
       >
         ★
       </button>
