@@ -7,6 +7,7 @@ import clsx from 'clsx'
 
 export default function AnalysisPanel() {
   const selectedAnomalyId = useStore((s) => s.selectedAnomalyId)
+  const selectedAnomalyHasAnalysis = useStore((s) => s.selectedAnomalyHasAnalysis)
   const analyses = useStore((s) => s.analyses)
   const setAnalysis = useStore((s) => s.setAnalysis)
   const lang = useStore((s) => s.analysisLang)
@@ -42,8 +43,10 @@ export default function AnalysisPanel() {
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {!selectedAnomalyId ? (
+        {selectedAnomalyId == null && !selectedAnomalyHasAnalysis ? (
           <p className="text-xs text-gray-600">이상값을 선택하세요</p>
+        ) : !selectedAnomalyHasAnalysis ? (
+          <p className="text-xs text-gray-600">이 이상값의 AI 분석 리포트가 없습니다</p>
         ) : !analysis ? (
           <p className="text-xs text-gray-600">분석 데이터를 불러오는 중...</p>
         ) : (

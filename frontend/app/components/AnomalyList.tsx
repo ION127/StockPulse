@@ -55,10 +55,12 @@ export default function AnomalyList() {
   const anomalies = useStore((s) => s.anomalies)
   const setSelectedTicker = useStore((s) => s.setSelectedTicker)
   const setSelectedAnomalyId = useStore((s) => s.setSelectedAnomalyId)
+  const setSelectedAnomalyHasAnalysis = useStore((s) => s.setSelectedAnomalyHasAnalysis)
 
   function handleClick(a: Anomaly) {
     setSelectedTicker(a.ticker)
-    if (a.has_analysis) setSelectedAnomalyId(a.id)
+    setSelectedAnomalyHasAnalysis(a.has_analysis)
+    setSelectedAnomalyId(a.has_analysis ? a.id : null)
   }
 
   return (

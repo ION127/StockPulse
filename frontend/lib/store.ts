@@ -15,6 +15,10 @@ interface StoreState {
   selectedAnomalyId: number | null
   setSelectedAnomalyId: (id: number | null) => void
 
+  // 선택된 이상값의 분석 존재 여부
+  selectedAnomalyHasAnalysis: boolean
+  setSelectedAnomalyHasAnalysis: (v: boolean) => void
+
   // 분석 결과 캐시 {anomalyId: Analysis}
   analyses: Record<number, Analysis>
   setAnalysis: (id: number, a: Analysis) => void
@@ -51,6 +55,9 @@ export const useStore = create<StoreState>((set) => ({
 
   selectedAnomalyId: null,
   setSelectedAnomalyId: (selectedAnomalyId) => set({ selectedAnomalyId }),
+
+  selectedAnomalyHasAnalysis: false,
+  setSelectedAnomalyHasAnalysis: (selectedAnomalyHasAnalysis) => set({ selectedAnomalyHasAnalysis }),
 
   analyses: {},
   setAnalysis: (id, a) => set((s) => ({ analyses: { ...s.analyses, [id]: a } })),
