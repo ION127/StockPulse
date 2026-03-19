@@ -2,11 +2,15 @@
 
 import uuid
 import logging
+import os
 from datetime import datetime
 from typing import Callable, Awaitable
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from db.connection import AsyncSessionLocal
+from db.models import Anomaly, AnalysisResult
 from schemas.anomaly import JobResponse
 from services.pipeline import run_pipeline
 
@@ -58,3 +62,95 @@ async def _run_job(job_id: str):
     except Exception as e:
         _jobs[job_id].update({"status": "failed", "completed_at": datetime.now(), "message": str(e)})
         logger.error(f"잡 실패 {job_id}: {e}")
+
+
+# ── 잘린 분석 재처리 ──────────────────────────────────────────────────────
+
+@router.post("/reanalyze", response_model=JobResponse)
+async def reanalyze_truncated(background_tasks: BackgroundTasks, days: int = 3, min_length: int = 200):
+    """분석이 없거나 잘린 이상값을 찾아 재분석.
+
+    - days: 최근 며칠 이내 이상값 대상 (기본 3일)
+    - min_length: 이 글자수 미만이면 잘린 것으로 판단 (기본 200자)
+    """
+    job_id = str(uuid.uuid4())[:8]
+    _jobs[job_id] = {"job_id": job_id, "status": "queued",
+                     "started_at": None, "completed_at": None,
+                     "anomaly_count": None, "message": None}
+    background_tasks.add_task(_run_reanalyze_job, job_id, days, min_length)
+    return JobResponse(**_jobs[job_id])
+
+
+async def _run_reanalyze_job(job_id: str, days: int, min_length: int):
+    from datetime import date, timedelta
+    from core.ai_analyzer import analyze_anomaly
+
+    _jobs[job_id]["status"] = "running"
+    _jobs[job_id]["started_at"] = datetime.now()
+
+    try:
+        since = date.today() - timedelta(days=days)
+        fixed = 0
+
+        async with AsyncSessionLocal() as db:
+            # 분석 없는 이상값 + 분석이 너무 짧은 이상값 조회
+            stmt = (
+                select(Anomaly)
+                .options(selectinload(Anomaly.analysis))
+                .where(Anomaly.anomaly_date >= since)
+            )
+            anomalies = (await db.execute(stmt)).scalars().all()
+
+            targets = [
+                a for a in anomalies
+                if a.analysis is None or len(a.analysis.analysis_ko or "") < min_length
+            ]
+
+            logger.info(f"[reanalyze] 대상 {len(targets)}건 (전체 {len(anomalies)}건 중)")
+
+            for anomaly in targets:
+                try:
+                    result = analyze_anomaly(
+                        ticker=anomaly.ticker,
+                        category=anomaly.sector or "",
+                        return_pct=anomaly.return_pct,
+                        direction=anomaly.direction,
+                        date=str(anomaly.anomaly_date),
+                        close_price=anomaly.close_price or 0,
+                        news_text="",  # 뉴스 없이 재분석
+                        event_type=anomaly.event_type,
+                        sector_peer_count=anomaly.sector_peer_count or 1,
+                        moving_sector_count=anomaly.moving_sector_count or 1,
+                    )
+
+                    if anomaly.analysis:
+                        # 기존 분석 업데이트
+                        anomaly.analysis.analysis_ko = result.get("ko", "")
+                        anomaly.analysis.analysis_en = result.get("en", "")
+                    else:
+                        # 새 분석 생성
+                        db.add(AnalysisResult(
+                            anomaly_id=anomaly.id,
+                            analysis_ko=result.get("ko", ""),
+                            analysis_en=result.get("en", ""),
+                            news_en=[],
+                            news_kr=[],
+                        ))
+
+                    await db.commit()
+                    fixed += 1
+                    logger.info(f"[reanalyze] 완료: {anomaly.ticker} (#{anomaly.id})")
+
+                except Exception as e:
+                    logger.error(f"[reanalyze] 실패: {anomaly.ticker} — {e}")
+
+        _jobs[job_id].update({
+            "status": "done",
+            "completed_at": datetime.now(),
+            "anomaly_count": fixed,
+            "message": f"재분석 완료: {fixed}/{len(targets)}건",
+        })
+
+    except Exception as e:
+        _jobs[job_id].update({"status": "failed", "completed_at": datetime.now(), "message": str(e)})
+        logger.error(f"재분석 잡 실패 {job_id}: {e}")

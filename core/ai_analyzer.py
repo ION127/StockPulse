@@ -30,7 +30,7 @@ _MIN_INTERVAL_SEC = 5
 _last_call_time = 0.0
 
 
-def _call_gemini(prompt: str, max_tokens: int = 1500, retries: int = 3) -> str:
+def _call_gemini(prompt: str, max_tokens: int = 3000, retries: int = 3) -> str:
     """Gemini API 호출 공통 함수 (속도 제한 + 자동 재시도)"""
     global _last_call_time
 
@@ -149,7 +149,7 @@ Please provide your analysis in the following exact format:
 """
 
     try:
-        full_text = _call_gemini(prompt, max_tokens=1500)
+        full_text = _call_gemini(prompt, max_tokens=3000)
 
         ko_part = ""
         en_part = ""
