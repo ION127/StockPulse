@@ -12,7 +12,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from db.connection import init_db, AsyncSessionLocal
-from routers import anomalies, sectors, jobs
+from routers import anomalies, sectors, jobs, stocks
 from services.pipeline import run_pipeline
 
 logger = logging.getLogger(__name__)
@@ -228,6 +228,7 @@ except ImportError:
 app.include_router(anomalies.router)
 app.include_router(sectors.router)
 app.include_router(jobs.router)
+app.include_router(stocks.router)
 
 # jobs 라우터에 ws_manager.broadcast 주입 (순환 임포트 없이)
 from routers.jobs import set_broadcast  # noqa: E402

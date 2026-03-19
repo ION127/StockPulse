@@ -2,6 +2,7 @@ export interface Anomaly {
   id: number
   ticker: string
   anomaly_date: string
+  bar_timestamp: string | null
   return_pct: number
   zscore: number | null
   close_price: number | null
@@ -48,6 +49,15 @@ export interface WsAnomalyMessage {
   direction: string
   sector: string
   event_type: string
+}
+
+export interface Candle {
+  timestamp: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
 }
 
 export interface JobResponse {

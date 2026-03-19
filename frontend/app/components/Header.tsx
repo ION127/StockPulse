@@ -3,6 +3,7 @@
 import { useStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { useState } from 'react'
+import SearchBar from './SearchBar'
 
 export default function Header({ lastUpdated }: { lastUpdated: string }) {
   const wsConnected = useStore((s) => s.wsConnected)
@@ -38,6 +39,7 @@ export default function Header({ lastUpdated }: { lastUpdated: string }) {
         <span className="text-xs text-gray-400">마지막 업데이트: {lastUpdated}</span>
       </div>
       <div className="flex items-center gap-4">
+        <SearchBar />
         <div className="flex items-center gap-1.5">
           <span className={`h-2 w-2 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-gray-600'}`} />
           <span className="text-xs text-gray-400">{wsConnected ? '실시간 연결됨' : '연결 끊김'}</span>

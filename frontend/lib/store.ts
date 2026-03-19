@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Anomaly, SectorTrend, Analysis } from '@/types'
+import type { Anomaly, SectorTrend, Analysis, Candle } from '@/types'
 
 interface StoreState {
   // 이상값 목록
@@ -22,6 +22,10 @@ interface StoreState {
   // 섹터 트렌드
   sectorTrends: SectorTrend[]
   setSectorTrends: (s: SectorTrend[]) => void
+
+  // 분봉 데이터 캐시 {ticker: Candle[]}
+  candles: Record<string, Candle[]>
+  setCandles: (ticker: string, data: Candle[]) => void
 
   // WebSocket 연결 상태
   wsConnected: boolean
@@ -53,6 +57,9 @@ export const useStore = create<StoreState>((set) => ({
 
   sectorTrends: [],
   setSectorTrends: (sectorTrends) => set({ sectorTrends }),
+
+  candles: {},
+  setCandles: (ticker, data) => set((s) => ({ candles: { ...s.candles, [ticker]: data } })),
 
   wsConnected: false,
   setWsConnected: (wsConnected) => set({ wsConnected }),

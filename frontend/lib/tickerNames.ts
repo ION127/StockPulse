@@ -147,3 +147,17 @@ export function getCompanyName(ticker: string): string {
 export function hasCompanyName(ticker: string): boolean {
   return ticker in TICKER_NAMES
 }
+
+/**
+ * 검색어로 티커를 검색합니다. (티커 코드 또는 기업명 매칭)
+ */
+export function searchTickers(query: string): Array<{ ticker: string; name: string }> {
+  if (!query.trim()) return []
+  const q = query.toLowerCase()
+  return Object.entries(TICKER_NAMES)
+    .filter(([ticker, name]) =>
+      ticker.toLowerCase().includes(q) || name.toLowerCase().includes(q)
+    )
+    .map(([ticker, name]) => ({ ticker, name }))
+    .slice(0, 10)
+}

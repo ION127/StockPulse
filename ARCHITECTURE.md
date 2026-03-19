@@ -27,6 +27,9 @@
 - 영문 + 한국어 뉴스 수집 후 Gemini AI 분석
 - 한국어 + 영어 동시 분석 리포트 제공
 - 섹터별 글로벌 관심도 트렌드 파악
+- **종목 검색** — 이상값 외 임의 종목을 이름/코드로 검색해 분봉 차트 조회
+- **분봉 차트** — 실제 가격선 위에 이상값 발생 위치를 마커로 표시 (1D/3D/5D 선택)
+- **기업명 표시** — 티커 코드 대신 기업명으로 종목 식별 (NVDA → NVIDIA)
 
 ---
 
@@ -53,7 +56,8 @@ project/
 │   │   ├── routers/
 │   │   │   ├── anomalies.py       #   GET /api/v1/anomalies
 │   │   │   ├── sectors.py         #   GET /api/v1/sectors/trending
-│   │   │   └── jobs.py            #   POST /api/v1/analyze/trigger
+│   │   │   ├── jobs.py            #   POST /api/v1/analyze/trigger
+│   │   │   └── stocks.py          #   GET /api/v1/stocks/{ticker}/candles
 │   │   ├── schemas/
 │   │   │   └── anomaly.py         #   Pydantic 요청/응답 모델
 │   │   └── services/
@@ -90,17 +94,19 @@ project/
 │   │   ├── page.tsx               #   SSR 초기 데이터 로드
 │   │   ├── DashboardClient.tsx    #   클라이언트 레이아웃
 │   │   └── components/
-│   │       ├── Header.tsx         #   연결 상태 + 수동 분석 트리거
+│   │       ├── Header.tsx         #   연결 상태 + 수동 분석 트리거 + 검색바
+│   │       ├── SearchBar.tsx      #   종목 검색 (기업명/티커 코드)
 │   │       ├── SectorHeatmap.tsx  #   섹터별 색상 히트맵
-│   │       ├── AnomalyList.tsx    #   실시간 이상값 목록
-│   │       ├── StockChart.tsx     #   Recharts 이력 차트
+│   │       ├── AnomalyList.tsx    #   실시간 이상값 목록 (기업명 표시)
+│   │       ├── StockChart.tsx     #   분봉 가격선 + 이상값 마커 (1D/3D/5D)
 │   │       ├── AnalysisPanel.tsx  #   AI 분석 한/영 탭
 │   │       └── WsProvider.tsx     #   WebSocket 연결 관리
 │   ├── lib/
 │   │   ├── api.ts                 #   FastAPI REST 클라이언트
-│   │   ├── store.ts               #   Zustand 전역 스토어
-│   │   └── websocket.ts           #   WS 자동 재연결
-│   └── types/index.ts             #   TypeScript 타입 정의
+│   │   ├── store.ts               #   Zustand 전역 스토어 (분봉 캐시 포함)
+│   │   ├── websocket.ts           #   WS 자동 재연결
+│   │   └── tickerNames.ts         #   티커↔기업명 매핑 + 검색 함수
+│   └── types/index.ts             #   TypeScript 타입 정의 (Candle 포함)
 │
 ├── cli/                           # CLI 도구 (로컬 실행 / GitHub Actions)
 │   └── main.py                    #   python -m cli.main [--demo]
@@ -186,7 +192,9 @@ project/
 - [x] Next.js 14 App Router + Tailwind CSS
 - [x] 섹터 히트맵 (이상값 빈도 색상 표현)
 - [x] 이상값 목록 실시간 업데이트 (WebSocket)
-- [x] 종목 클릭 → Recharts 이력 차트
+- [x] 종목 클릭 → 분봉 가격 차트 (실제 가격선 + 이상값 마커, 1D/3D/5D 기간 선택)
+- [x] 종목 검색바 — 기업명/티커 코드로 임의 종목 조회
+- [x] 기업명 표시 — 티커 코드 대신 기업명 우선 표시 (NVDA → NVIDIA)
 - [x] AI 분석 리포트 한국어/영어 탭 전환
 - [x] 수동 분석 트리거 + 진행 상태 표시
 
@@ -521,6 +529,10 @@ GET  /api/v1/anomalies/{anomaly_id}/analysis
 GET  /api/v1/sectors/trending
      Query: ?days=7
      Response: [{ sector, anomaly_count, avg_return_pct, up_count, down_count, hot_tickers }]
+
+GET  /api/v1/stocks/{ticker}/candles
+     Query: ?days=1  (1~5일, 미국 1분봉 / 한국 일봉)
+     Response: [{ timestamp, open, high, low, close, volume }]
 
 POST /api/v1/analyze/trigger
      Response: { job_id, status: "queued" }

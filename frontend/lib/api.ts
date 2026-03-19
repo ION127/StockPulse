@@ -1,4 +1,4 @@
-import type { Anomaly, Analysis, SectorTrend, JobResponse } from '@/types'
+import type { Anomaly, Analysis, SectorTrend, JobResponse, Candle } from '@/types'
 
 // SSR(서버): k8s 내부 DNS로 직접 접근
 // CSR(브라우저): 상대 경로 → Ingress가 /api 를 api-service:8000으로 라우팅
@@ -32,6 +32,10 @@ export const api = {
 
   getSectorTrends(days = 7) {
     return get<SectorTrend[]>(`/api/v1/sectors/trending?days=${days}`)
+  },
+
+  getCandles(ticker: string, days = 1) {
+    return get<Candle[]>(`/api/v1/stocks/${encodeURIComponent(ticker)}/candles?days=${days}`)
   },
 
   triggerAnalysis() {

@@ -10,6 +10,9 @@
 - **이벤트 자동 분류** — ETF 기반 로직으로 INDIVIDUAL / SECTOR / MARKET 이벤트 구분
 - **AI 원인 분석** — Gemini 2.5 Flash로 관련 뉴스 수집 후 한국어 + 영어 리포트 생성
 - **실시간 대시보드** — WebSocket 기반 섹터 히트맵, 이상값 목록, AI 분석 리포트
+- **분봉 차트** — 실제 가격선 위에 이상값 발생 위치를 마커로 표시 (1D/3D/5D 선택)
+- **종목 검색** — 이상값 외 임의 종목을 기업명/티커 코드로 검색해 차트 조회
+- **기업명 표시** — 티커 코드 대신 기업명으로 종목 식별 (NVDA → NVIDIA)
 - **Slack 알림** — 이상값 감지 즉시 분석 결과 발송
 
 ---
@@ -82,9 +85,10 @@
 |------|------|
 | 프레임워크 | Next.js 14 (App Router) |
 | 상태관리 | Zustand |
-| 차트 | Recharts |
+| 차트 | Recharts (분봉 가격선 + 이상값 마커) |
 | 실시간 | WebSocket (native) |
 | 스타일 | Tailwind CSS |
+| 종목 검색 | 클라이언트 사이드 (tickerNames.ts 매핑) |
 
 ### Data
 | 역할 | 기술 |
@@ -240,6 +244,10 @@ GET  /api/v1/sectors/trending
      ?days=7
      → [{ sector, anomaly_count, avg_return_pct, up_count, down_count, hot_tickers }]
 
+GET  /api/v1/stocks/{ticker}/candles
+     ?days=1  (1~5일, 미국 1분봉 / 한국 일봉)
+     → [{ timestamp, open, high, low, close, volume }]
+
 POST /api/v1/analyze/trigger
      → { job_id, status: "queued" }
 
@@ -265,6 +273,11 @@ StockPulse/
 │   └── ai_analyzer.py       # Gemini API 래퍼
 ├── services/
 │   ├── api/                 # FastAPI (REST + WebSocket + Kafka consumer)
+│   │   └── routers/
+│   │       ├── anomalies.py # 이상값 조회 API
+│   │       ├── sectors.py   # 섹터 트렌드 API
+│   │       ├── jobs.py      # 수동 분석 트리거 API
+│   │       └── stocks.py    # 분봉 데이터 API (신규)
 │   ├── stock-collector/     # yfinance → stock.raw.us
 │   ├── kis-bridge/          # KIS WebSocket → stock.raw.kr
 │   ├── anomaly-detector/    # 이상값 탐지 → anomaly.detected
@@ -272,10 +285,16 @@ StockPulse/
 │   ├── ai-analyzer/         # Gemini 분석 → analysis.completed
 │   └── notifier/            # Slack 알림
 ├── frontend/                # Next.js 14 대시보드
+│   ├── app/components/
+│   │   ├── SearchBar.tsx    # 종목 검색 (신규)
+│   │   ├── StockChart.tsx   # 분봉 차트 + 이상값 마커 (개편)
+│   │   └── ...
+│   └── lib/
+│       └── tickerNames.ts   # 티커↔기업명 매핑 (신규)
 ├── k8s/                     # Kubernetes 매니페스트
 ├── argocd/                  # ArgoCD GitOps 설정
 ├── monitoring/              # Prometheus + Grafana 대시보드
-├── cli/                     # 로컬 실행 CLI
+├── DFD.md                   # 데이터 흐름도
 └── docker-compose.yml
 ```
 
