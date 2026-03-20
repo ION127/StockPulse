@@ -1,5 +1,6 @@
 """POST /api/v1/analyze/trigger 라우터"""
 
+import asyncio
 import uuid
 import logging
 import os
@@ -64,13 +65,13 @@ async def _run_job(job_id: str):
         logger.error(f"잡 실패 {job_id}: {e}")
 
 
-# ── 잘린 분석 재처리 ──────────────────────────────────────────────────────
+# ── 과거 이상값 재분석 ─────────────────────────────────────────────────────────
 
 @router.post("/reanalyze", response_model=JobResponse)
-async def reanalyze_truncated(background_tasks: BackgroundTasks, days: int = 3, min_length: int = 200):
-    """분석이 없거나 잘린 이상값을 찾아 재분석.
+async def reanalyze_truncated(background_tasks: BackgroundTasks, days: int = 7, min_length: int = 200):
+    """분석이 없거나 잘린 이상값을 찾아 뉴스 수집 후 재분석.
 
-    - days: 최근 며칠 이내 이상값 대상 (기본 3일)
+    - days: 최근 며칠 이내 이상값 대상 (기본 7일)
     - min_length: 이 글자수 미만이면 잘린 것으로 판단 (기본 200자)
     """
     job_id = str(uuid.uuid4())[:8]
@@ -84,16 +85,18 @@ async def reanalyze_truncated(background_tasks: BackgroundTasks, days: int = 3, 
 async def _run_reanalyze_job(job_id: str, days: int, min_length: int):
     from datetime import date, timedelta
     from core.ai_analyzer import analyze_anomaly
+    from core.news_fetcher import fetch_news_for_anomaly, format_news_for_prompt
+    from core.stock_categories import STOCK_CATEGORIES
 
     _jobs[job_id]["status"] = "running"
     _jobs[job_id]["started_at"] = datetime.now()
+    loop = asyncio.get_event_loop()
 
     try:
         since = date.today() - timedelta(days=days)
         fixed = 0
 
         async with AsyncSessionLocal() as db:
-            # 분석 없는 이상값 + 분석이 너무 짧은 이상값 조회
             stmt = (
                 select(Anomaly)
                 .options(selectinload(Anomaly.analysis))
@@ -106,35 +109,55 @@ async def _run_reanalyze_job(job_id: str, days: int, min_length: int):
                 if a.analysis is None or len(a.analysis.analysis_ko or "") < min_length
             ]
 
-            logger.info(f"[reanalyze] 대상 {len(targets)}건 (전체 {len(anomalies)}건 중)")
+            logger.info(f"[reanalyze] 대상 {len(targets)}건 (전체 {len(anomalies)}건 중, 최근 {days}일)")
 
             for anomaly in targets:
                 try:
-                    result = analyze_anomaly(
-                        ticker=anomaly.ticker,
-                        category=anomaly.sector or "",
-                        return_pct=anomaly.return_pct,
-                        direction=anomaly.direction,
-                        date=str(anomaly.anomaly_date),
-                        close_price=anomaly.close_price or 0,
-                        news_text="",  # 뉴스 없이 재분석
-                        event_type=anomaly.event_type,
-                        sector_peer_count=anomaly.sector_peer_count or 1,
-                        moving_sector_count=anomaly.moving_sector_count or 1,
+                    # 뉴스 수집 (실패해도 빈 텍스트로 계속 진행)
+                    sector = anomaly.sector or ""
+                    cat_data = STOCK_CATEGORIES.get(sector, {})
+                    try:
+                        news_data = await loop.run_in_executor(
+                            None, fetch_news_for_anomaly,
+                            anomaly.ticker, sector,
+                            cat_data.get("keywords_en", [anomaly.ticker.replace("KR:", "")]),
+                            cat_data.get("keywords_kr", []),
+                        )
+                        news_text = format_news_for_prompt(news_data)
+                        news_en = news_data.get("en", [])
+                        news_kr = news_data.get("kr", [])
+                    except Exception as ne:
+                        logger.warning(f"[reanalyze] 뉴스 수집 실패 ({anomaly.ticker}): {ne}")
+                        news_text = ""
+                        news_en = []
+                        news_kr = []
+
+                    # AI 분석 (별도 스레드에서 실행 — time.sleep 포함된 동기 함수)
+                    result = await loop.run_in_executor(
+                        None, analyze_anomaly,
+                        anomaly.ticker, sector, anomaly.return_pct, anomaly.direction,
+                        str(anomaly.anomaly_date), float(anomaly.close_price or 0),
+                        news_text, anomaly.event_type,
+                        int(anomaly.sector_peer_count or 1),
+                        int(anomaly.moving_sector_count or 1),
                     )
 
                     if anomaly.analysis:
                         # 기존 분석 업데이트
                         anomaly.analysis.analysis_ko = result.get("ko", "")
                         anomaly.analysis.analysis_en = result.get("en", "")
+                        if news_en:
+                            anomaly.analysis.news_en = news_en
+                        if news_kr:
+                            anomaly.analysis.news_kr = news_kr
                     else:
                         # 새 분석 생성
                         db.add(AnalysisResult(
                             anomaly_id=anomaly.id,
                             analysis_ko=result.get("ko", ""),
                             analysis_en=result.get("en", ""),
-                            news_en=[],
-                            news_kr=[],
+                            news_en=news_en,
+                            news_kr=news_kr,
                         ))
 
                     await db.commit()

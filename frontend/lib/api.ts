@@ -70,6 +70,10 @@ export const api = {
     return fetch(`${BASE}/api/v1/analyze/trigger`, { method: 'POST' }).then(r => r.json() as Promise<JobResponse>)
   },
 
+  reanalyzeAnomalies(days = 7) {
+    return fetch(`${BASE}/api/v1/analyze/reanalyze?days=${days}`, { method: 'POST' }).then(r => r.json() as Promise<JobResponse>)
+  },
+
   getJobStatus(jobId: string) {
     return get<JobResponse>(`/api/v1/analyze/jobs/${jobId}`)
   },

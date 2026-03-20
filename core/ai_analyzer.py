@@ -1,32 +1,39 @@
 """
 Gemini API를 사용한 주식 이상값 분석 모듈
 영문/한국어 동시 분석 결과 제공
-무료 티어: gemini-1.5-flash (하루 1,500회, 분당 15회)
+무료 티어: gemini-2.5-flash (분당 10회, 하루 500회)
 """
 
 import os
 import time
 import logging
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 logger = logging.getLogger(__name__)
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
-model = genai.GenerativeModel(
-    model_name="gemini-2.5-flash",
-    system_instruction=(
-        "You are a professional financial analyst and market intelligence expert. "
-        "You analyze stock price anomalies (sudden spikes or drops) and identify their root causes "
-        "using news data from both English and Korean sources. "
-        "Your analysis must be provided in BOTH languages: Korean (한국어) and English. "
-        "Be concise but insightful. Focus on: root causes, global/macro context, "
-        "sector-wide implications, and key catalysts. "
-        "Format your response exactly as specified."
-    ),
+_SYSTEM_INSTRUCTION = (
+    "You are a professional financial analyst and market intelligence expert. "
+    "You analyze stock price anomalies (sudden spikes or drops) and identify their root causes "
+    "using news data from both English and Korean sources. "
+    "Your analysis must be provided in BOTH languages: Korean (한국어) and English. "
+    "Be concise but insightful. Focus on: root causes, global/macro context, "
+    "sector-wide implications, and key catalysts. "
+    "Format your response exactly as specified."
 )
 
-# 분당 15회 제한 → 호출 사이 최소 5초 간격
-_MIN_INTERVAL_SEC = 5
+_client: genai.Client | None = None
+
+
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY", ""))
+    return _client
+
+
+# 분당 10회 제한 → 호출 사이 최소 7초 간격
+_MIN_INTERVAL_SEC = 7
 _last_call_time = 0.0
 
 
@@ -34,7 +41,6 @@ def _call_gemini(prompt: str, max_tokens: int = 3000, retries: int = 3) -> str:
     """Gemini API 호출 공통 함수 (속도 제한 + 자동 재시도)"""
     global _last_call_time
 
-    # 마지막 호출로부터 최소 간격 확보
     elapsed = time.time() - _last_call_time
     if elapsed < _MIN_INTERVAL_SEC:
         time.sleep(_MIN_INTERVAL_SEC - elapsed)
@@ -42,15 +48,18 @@ def _call_gemini(prompt: str, max_tokens: int = 3000, retries: int = 3) -> str:
     for attempt in range(retries):
         try:
             _last_call_time = time.time()
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.GenerationConfig(max_output_tokens=max_tokens),
+            response = _get_client().models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=_SYSTEM_INSTRUCTION,
+                    max_output_tokens=max_tokens,
+                ),
             )
             return response.text
         except Exception as e:
             err = str(e)
             if "429" in err and attempt < retries - 1:
-                # 오류 메시지에서 retry_delay 파싱, 없으면 기본 60초
                 wait = 60
                 if "retry_delay" in err:
                     try:
@@ -159,15 +168,12 @@ Please provide your analysis in the following exact format:
             ko_part = parts[0].replace("---[한국어 분석]---", "").strip()
             en_part = parts[1].strip() if len(parts) > 1 else ""
         elif "---[한국어 분석]---" in full_text:
-            # 영어 섹션 누락 — 한국어만 저장, 영어는 빈 문자열
             ko_part = full_text.replace("---[한국어 분석]---", "").strip()
             en_part = ""
         elif "---[English Analysis]---" in full_text:
-            # 한국어 섹션 누락 — 영어만 저장
             ko_part = ""
             en_part = full_text.replace("---[English Analysis]---", "").strip()
         else:
-            # 구분자 없음 — 전체를 한국어로, 영어는 빈 문자열
             ko_part = full_text
             en_part = ""
 

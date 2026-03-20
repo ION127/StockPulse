@@ -12,6 +12,7 @@ export default function Header({ lastUpdated }: { lastUpdated: string }) {
   const setRunningJobId = useStore((s) => s.setRunningJobId)
   const runningJobId = useStore((s) => s.runningJobId)
   const [triggering, setTriggering] = useState(false)
+  const [reanalyzing, setReanalyzing] = useState(false)
 
   const { user, logout } = useAuthStore()
   const openAuthModal = useStore((s) => s.openAuthModal)
@@ -35,6 +36,26 @@ export default function Header({ lastUpdated }: { lastUpdated: string }) {
       }, 3000)
     } catch {
       setTriggering(false)
+    }
+  }
+
+  async function reanalyze() {
+    setReanalyzing(true)
+    try {
+      const job = await api.reanalyzeAnomalies(7)
+      setRunningJobId(job.job_id)
+
+      const interval = setInterval(async () => {
+        const status = await api.getJobStatus(job.job_id)
+        if (status.status === 'done' || status.status === 'failed') {
+          clearInterval(interval)
+          setRunningJobId(null)
+          setReanalyzing(false)
+          window.location.reload()
+        }
+      }, 3000)
+    } catch {
+      setReanalyzing(false)
     }
   }
 
@@ -64,10 +85,20 @@ export default function Header({ lastUpdated }: { lastUpdated: string }) {
           </span>
         </div>
 
+        {/* 과거 재분석 버튼 */}
+        <button
+          onClick={reanalyze}
+          disabled={reanalyzing || triggering}
+          className="px-2.5 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed rounded font-medium transition-colors whitespace-nowrap"
+          title="분석 리포트가 없는 최근 7일 이상값을 재분석"
+        >
+          {reanalyzing ? '재분석 중...' : '과거 재분석'}
+        </button>
+
         {/* 분석 실행 버튼 */}
         <button
           onClick={triggerAnalysis}
-          disabled={triggering}
+          disabled={triggering || reanalyzing}
           className="px-2.5 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:cursor-not-allowed rounded font-medium transition-colors whitespace-nowrap"
         >
           {triggering ? '분석 중...' : <><span className="hidden sm:inline">수동 </span>분석 실행</>}
