@@ -59,26 +59,29 @@ async def run_pipeline(db: AsyncSession, broadcast: Callable,
                          "return_pct": anomaly["return_pct"], "direction": anomaly["direction"],
                          "sector": anomaly.get("sector", ""), "event_type": anomaly.get("event_type", "INDIVIDUAL")})
 
-    # 5. 뉴스 + AI 분석 (최대 5개)
+    # 5. 뉴스 + AI 분석 (전체)
     analyzed = 0
-    for saved_anomaly, raw in saved_anomalies[:5]:
+    for saved_anomaly, raw in saved_anomalies:
         if saved_anomaly.analysis:
             continue
-        sector = raw.get("sector", "")
-        cat_data = STOCK_CATEGORIES.get(sector, {})
-        news_data = await loop.run_in_executor(
-            None, fetch_news_for_anomaly, raw["ticker"], sector,
-            cat_data.get("keywords_en", [raw["ticker"]]), cat_data.get("keywords_kr", []),
-        )
-        analysis = await loop.run_in_executor(
-            None, analyze_anomaly, raw["ticker"], sector, raw["return_pct"], raw["direction"],
-            str(raw["date"]), raw.get("close_price", 0), format_news_for_prompt(news_data),
-            raw.get("event_type", "INDIVIDUAL"), raw.get("sector_peer_count", 1),
-            raw.get("moving_sector_count", 1),
-        )
-        await repo.save_analysis(saved_anomaly.id, analysis["ko"], analysis["en"],
-                                 news_data.get("en", []), news_data.get("kr", []))
-        analyzed += 1
+        try:
+            sector = raw.get("sector", "")
+            cat_data = STOCK_CATEGORIES.get(sector, {})
+            news_data = await loop.run_in_executor(
+                None, fetch_news_for_anomaly, raw["ticker"], sector,
+                cat_data.get("keywords_en", [raw["ticker"]]), cat_data.get("keywords_kr", []),
+            )
+            analysis = await loop.run_in_executor(
+                None, analyze_anomaly, raw["ticker"], sector, raw["return_pct"], raw["direction"],
+                str(raw["date"]), raw.get("close_price", 0), format_news_for_prompt(news_data),
+                raw.get("event_type", "INDIVIDUAL"), raw.get("sector_peer_count", 1),
+                raw.get("moving_sector_count", 1),
+            )
+            await repo.save_analysis(saved_anomaly.id, analysis["ko"], analysis["en"],
+                                     news_data.get("en", []), news_data.get("kr", []))
+            analyzed += 1
+        except Exception as e:
+            logger.error(f"분석 실패 [{raw['ticker']}]: {e}")
 
     result_summary["analyzed_count"] = analyzed
     result_summary["completed_at"] = datetime.now().isoformat()
