@@ -227,14 +227,14 @@ jobs:
           }
 
           echo "=== K8s 매니페스트 업데이트 ==="
-          [ "${{ needs.detect-changes.outputs.api }}"              = "true" ] && update_manifest "api"
-          [ "${{ needs.detect-changes.outputs.stock_collector }}"  = "true" ] && update_manifest "stock-collector"
-          [ "${{ needs.detect-changes.outputs.kis_bridge }}"       = "true" ] && update_manifest "kis-bridge"
-          [ "${{ needs.detect-changes.outputs.anomaly_detector }}" = "true" ] && update_manifest "anomaly-detector"
-          [ "${{ needs.detect-changes.outputs.news_fetcher }}"     = "true" ] && update_manifest "news-fetcher"
-          [ "${{ needs.detect-changes.outputs.ai_analyzer }}"      = "true" ] && update_manifest "ai-analyzer"
-          [ "${{ needs.detect-changes.outputs.notifier }}"         = "true" ] && update_manifest "notifier"
-          [ "${{ needs.detect-changes.outputs.frontend }}"         = "true" ] && update_manifest "frontend"
+          if [ "${{ needs.detect-changes.outputs.api }}"              = "true" ]; then update_manifest "api";              fi
+          if [ "${{ needs.detect-changes.outputs.stock_collector }}"  = "true" ]; then update_manifest "stock-collector";  fi
+          if [ "${{ needs.detect-changes.outputs.kis_bridge }}"       = "true" ]; then update_manifest "kis-bridge";       fi
+          if [ "${{ needs.detect-changes.outputs.anomaly_detector }}" = "true" ]; then update_manifest "anomaly-detector"; fi
+          if [ "${{ needs.detect-changes.outputs.news_fetcher }}"     = "true" ]; then update_manifest "news-fetcher";     fi
+          if [ "${{ needs.detect-changes.outputs.ai_analyzer }}"      = "true" ]; then update_manifest "ai-analyzer";      fi
+          if [ "${{ needs.detect-changes.outputs.notifier }}"         = "true" ]; then update_manifest "notifier";         fi
+          if [ "${{ needs.detect-changes.outputs.frontend }}"         = "true" ]; then update_manifest "frontend";         fi
 
       - name: Commit updated manifests
         run: |
