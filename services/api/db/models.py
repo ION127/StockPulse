@@ -2,13 +2,18 @@
 
 from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import BigInteger, Boolean, Integer, String, Float, Date, DateTime, Text, JSON, ForeignKey, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Index, Integer, String, Float, Date, DateTime, Text, JSON, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.connection import Base
 
 
 class Anomaly(Base):
     __tablename__ = "anomalies"
+    __table_args__ = (
+        Index("idx_anomaly_date_sector",    "anomaly_date", "sector"),
+        Index("idx_anomaly_ticker_date",    "ticker",       "anomaly_date"),
+        Index("idx_anomaly_date_direction", "anomaly_date", "direction"),
+    )
 
     id:                  Mapped[int]             = mapped_column(Integer, primary_key=True, autoincrement=True)
     detected_at:         Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now())

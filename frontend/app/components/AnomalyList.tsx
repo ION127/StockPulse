@@ -77,6 +77,8 @@ function AnomalyRow({ anomaly, onClick }: { anomaly: Anomaly; onClick: () => voi
   )
 }
 
+const PAGE_SIZE = 20
+
 export default function AnomalyList() {
   const anomalies = useStore((s) => s.anomalies)
   const setSelectedTicker = useStore((s) => s.setSelectedTicker)
@@ -84,8 +86,14 @@ export default function AnomalyList() {
   const setSelectedAnomalyHasAnalysis = useStore((s) => s.setSelectedAnomalyHasAnalysis)
   const { watchlist, isWatched } = useWatchlistStore()
   const [myOnly, setMyOnly] = useState(false)
+  const [page, setPage] = useState(0)
 
   const filtered = myOnly ? anomalies.filter((a) => isWatched(a.ticker)) : anomalies
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+  // 필터 변경 시 첫 페이지로
+  const handleMyOnly = () => { setMyOnly((v) => !v); setPage(0) }
 
   function handleClick(a: Anomaly) {
     setSelectedTicker(a.ticker)
@@ -102,7 +110,7 @@ export default function AnomalyList() {
         </h2>
         {watchlist.length > 0 && (
           <button
-            onClick={() => setMyOnly((v) => !v)}
+            onClick={handleMyOnly}
             className={clsx(
               'text-[10px] px-2 py-0.5 rounded transition-colors',
               myOnly ? 'bg-yellow-500 text-black font-bold' : 'bg-gray-700 text-gray-400 hover:text-white'
@@ -113,16 +121,38 @@ export default function AnomalyList() {
         )}
       </div>
       <div className="overflow-y-auto scrollbar-thin flex-1 space-y-0.5 pr-1">
-        {filtered.length === 0 ? (
+        {paginated.length === 0 ? (
           <p className="text-xs text-gray-600 py-4 text-center">
             {myOnly ? '관심 종목의 이상값 없음' : '이상값 없음'}
           </p>
         ) : (
-          filtered.map((a) => (
+          paginated.map((a) => (
             <AnomalyRow key={`${a.id}-${a.ticker}`} anomaly={a} onClick={() => handleClick(a)} />
           ))
         )}
       </div>
+      {/* 페이지네이션 */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-800 shrink-0">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="text-xs px-2 py-1 rounded bg-gray-800 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            ← 이전
+          </button>
+          <span className="text-[10px] text-gray-600">
+            {page + 1} / {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            className="text-xs px-2 py-1 rounded bg-gray-800 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            다음 →
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -11,6 +11,8 @@ export default function Header({ lastUpdated }: { lastUpdated: string }) {
   const wsConnected = useStore((s) => s.wsConnected)
   const setRunningJobId = useStore((s) => s.setRunningJobId)
   const runningJobId = useStore((s) => s.runningJobId)
+  const setAnomalies = useStore((s) => s.setAnomalies)
+  const setSectorTrends = useStore((s) => s.setSectorTrends)
   const [triggering, setTriggering] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
 
@@ -18,20 +20,28 @@ export default function Header({ lastUpdated }: { lastUpdated: string }) {
   const openAuthModal = useStore((s) => s.openAuthModal)
   const setOpenAuthModal = useStore((s) => s.setOpenAuthModal)
 
+  async function refreshData() {
+    const [anomalies, trends] = await Promise.all([
+      api.getAnomalies({ days: 7, limit: 100 }),
+      api.getSectorTrends(7),
+    ])
+    setAnomalies(anomalies)
+    setSectorTrends(trends)
+  }
+
   async function triggerAnalysis() {
     setTriggering(true)
     try {
       const job = await api.triggerAnalysis()
       setRunningJobId(job.job_id)
 
-      // 완료될 때까지 폴링
       const interval = setInterval(async () => {
         const status = await api.getJobStatus(job.job_id)
         if (status.status === 'done' || status.status === 'failed') {
           clearInterval(interval)
           setRunningJobId(null)
           setTriggering(false)
-          window.location.reload()
+          await refreshData()
         }
       }, 3000)
     } catch {
@@ -51,7 +61,7 @@ export default function Header({ lastUpdated }: { lastUpdated: string }) {
           clearInterval(interval)
           setRunningJobId(null)
           setReanalyzing(false)
-          window.location.reload()
+          await refreshData()
         }
       }, 3000)
     } catch {

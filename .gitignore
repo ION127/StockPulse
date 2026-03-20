@@ -3,3 +3,4 @@ SECRETS.md
 __pycache__/
 *.pyc
 .claude/
+IMPROVEMENTS.md

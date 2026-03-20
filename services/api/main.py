@@ -287,9 +287,24 @@ async def websocket_endpoint(ws: WebSocket):
 
 @app.get("/health", tags=["System"])
 async def health():
+    checks: dict[str, str] = {}
+
+    # DB 연결 확인
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(__import__("sqlalchemy").text("SELECT 1"))
+        checks["db"] = "ok"
+    except Exception as e:
+        checks["db"] = f"error: {e}"
+
+    # Kafka 확인
+    checks["kafka"] = "enabled" if KAFKA_BOOTSTRAP else "disabled"
+
+    overall = "healthy" if all(v in ("ok", "enabled", "disabled") for v in checks.values()) else "unhealthy"
+
     return {
-        "status":         "ok",
+        "status":         overall,
         "time":           datetime.now().isoformat(),
         "ws_connections": len(ws_manager._connections),
-        "kafka_enabled":  bool(KAFKA_BOOTSTRAP),
+        "checks":         checks,
     }
