@@ -10,7 +10,12 @@ import logging
 from google import genai
 from google.genai import types
 
+from core.circuit_breaker import CircuitBreaker, CircuitOpenError
+
 logger = logging.getLogger(__name__)
+
+# Gemini API용 Circuit Breaker (5회 연속 실패 시 60초 차단)
+_gemini_cb = CircuitBreaker(name="gemini", failure_threshold=5, recovery_timeout=60.0)
 
 _SYSTEM_INSTRUCTION = (
     "You are a professional financial analyst and market intelligence expert. "
@@ -45,18 +50,24 @@ def _call_gemini(prompt: str, max_tokens: int = 3000, retries: int = 3) -> str:
     if elapsed < _MIN_INTERVAL_SEC:
         time.sleep(_MIN_INTERVAL_SEC - elapsed)
 
+    def _single_call() -> str:
+        response = _get_client().models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=_SYSTEM_INSTRUCTION,
+                max_output_tokens=max_tokens,
+            ),
+        )
+        return response.text
+
     for attempt in range(retries):
         try:
             _last_call_time = time.time()
-            response = _get_client().models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=_SYSTEM_INSTRUCTION,
-                    max_output_tokens=max_tokens,
-                ),
-            )
-            return response.text
+            # Circuit Breaker를 통해 호출 — OPEN 상태면 CircuitOpenError 발생
+            return _gemini_cb.call(_single_call)
+        except CircuitOpenError:
+            raise  # 상위로 전파 (ai-analyzer main에서 DLQ 처리)
         except Exception as e:
             err = str(e)
             if "429" in err and attempt < retries - 1:
@@ -179,6 +190,8 @@ Please provide your analysis in the following exact format:
 
         return {"ko": ko_part, "en": en_part}
 
+    except CircuitOpenError:
+        raise  # ai-analyzer main.py에서 DLQ 처리
     except Exception as e:
         logger.error(f"Gemini API 오류 ({ticker}): {e}")
         return {

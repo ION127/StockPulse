@@ -18,8 +18,21 @@ import logging
 import os
 import signal
 
+import time
+
 import requests
-from confluent_kafka import Consumer, KafkaError
+from confluent_kafka import Consumer, KafkaError, Producer
+
+# DLQ 헬퍼
+try:
+    import sys as _sys, os as _os
+    _root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
+    from core.kafka_dlq import send_to_dlq
+    _DLQ_AVAILABLE = True
+except ImportError:
+    _DLQ_AVAILABLE = False
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,20 +91,39 @@ def _format_message(data: dict) -> str:
     return "\n".join(lines)
 
 
-def _send_slack(text: str):
+_SLACK_MAX_RETRIES = 3
+_SLACK_RETRY_DELAY = 5  # 초
+
+
+def _send_slack(text: str) -> bool:
+    """
+    Slack 웹훅으로 메시지 전송. 최대 3회 재시도.
+    성공 시 True, 최종 실패 시 False 반환.
+    """
     if not SLACK_WEBHOOK:
         logger.info(f"[Slack 미설정 — 로그 출력]\n{text}")
-        return
-    try:
-        resp = requests.post(
-            SLACK_WEBHOOK,
-            json={"text": text},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        logger.info("Slack 알림 발송 완료")
-    except Exception as e:
-        logger.error(f"Slack 알림 실패: {e}")
+        return True
+
+    for attempt in range(_SLACK_MAX_RETRIES):
+        try:
+            resp = requests.post(
+                SLACK_WEBHOOK,
+                json={"text": text},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            logger.info("Slack 알림 발송 완료")
+            return True
+        except Exception as e:
+            if attempt < _SLACK_MAX_RETRIES - 1:
+                logger.warning(
+                    f"Slack 알림 실패 ({attempt + 1}/{_SLACK_MAX_RETRIES}): {e} "
+                    f"— {_SLACK_RETRY_DELAY}초 후 재시도"
+                )
+                time.sleep(_SLACK_RETRY_DELAY)
+            else:
+                logger.error(f"Slack 알림 최종 실패 ({_SLACK_MAX_RETRIES}회 시도): {e}")
+    return False
 
 
 def main():
@@ -109,6 +141,7 @@ def main():
         "group.id": GROUP_ID,
         "auto.offset.reset": "earliest",
     })
+    producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP})
 
     consumer.subscribe(["analysis.completed"])
     logger.info("구독 시작: analysis.completed")
@@ -141,7 +174,17 @@ def main():
                     continue
 
                 text = _format_message(data)
-                _send_slack(text)
+                success = _send_slack(text)
+
+                # Slack 최종 실패 → DLQ 보존
+                if not success and _DLQ_AVAILABLE:
+                    send_to_dlq(
+                        producer,
+                        "analysis.completed",
+                        msg.value(),
+                        msg.key(),
+                        RuntimeError(f"Slack 알림 {_SLACK_MAX_RETRIES}회 실패"),
+                    )
 
             except Exception as e:
                 logger.error(f"메시지 처리 오류: {e}", exc_info=True)

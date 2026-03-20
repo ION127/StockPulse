@@ -41,6 +41,7 @@ KAFKA_BOOTSTRAP          = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 THRESHOLD_PCT            = float(os.getenv("ANOMALY_THRESHOLD_PERCENT", "1.5"))
 THRESHOLD_Z              = float(os.getenv("ANOMALY_ZSCORE_THRESHOLD", "3.0"))
 INTRADAY_RECENT_MINUTES  = int(os.getenv("INTRADAY_RECENT_MINUTES", "5"))
+USE_ADAPTIVE             = os.getenv("USE_ADAPTIVE_DETECTION", "false").lower() == "true"
 GROUP_ID                 = "anomaly-detector-group"
 
 _running = True
@@ -90,10 +91,13 @@ def main():
 
     try:
         from core.stock_categories import STOCK_CATEGORIES
-        from core.stock_fetcher import classify_event_type, detect_anomalies
+        from core.stock_fetcher import classify_event_type, detect_anomalies, detect_anomalies_adaptive
     except ImportError as e:
         logger.error(f"core 모듈 임포트 실패: {e}")
         sys.exit(1)
+
+    detect_fn = detect_anomalies_adaptive if USE_ADAPTIVE else detect_anomalies
+    logger.info(f"탐지 모드: {'적응형 (adaptive)' if USE_ADAPTIVE else '고정 임계값'}")
 
     consumer = Consumer({
         "bootstrap.servers": KAFKA_BOOTSTRAP,
@@ -132,7 +136,7 @@ def main():
                 stock_data = _restore_dataframes(stocks_raw)
                 logger.info(f"[{market.upper()}] {len(stock_data)}개 종목 이상값 탐지 중")
 
-                anomalies = detect_anomalies(stock_data, THRESHOLD_PCT, THRESHOLD_Z)
+                anomalies = detect_fn(stock_data, THRESHOLD_PCT, THRESHOLD_Z)
 
                 # 장중 모드: bar_timestamp 기준으로 최근 N분 이내만 처리
                 # 일별 모드: is_recent(5일 이내) 기준

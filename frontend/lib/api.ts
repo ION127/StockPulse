@@ -16,13 +16,44 @@ function getToken(): string | null {
   }
 }
 
+function getRefreshToken(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem('stockpulse-auth')
+    return raw ? JSON.parse(raw)?.state?.refreshToken ?? null : null
+  } catch {
+    return null
+  }
+}
+
+/** Access Token 만료 시 Refresh Token으로 재발급. 성공 시 true 반환. */
+async function tryRefreshToken(): Promise<boolean> {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) return false
+  try {
+    const res = await fetch(`${BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+    if (!res.ok) return false
+    const { access_token, refresh_token } = await res.json()
+    // 동적 임포트로 순환참조 방지
+    const { useAuthStore } = await import('./authStore')
+    useAuthStore.getState().setTokens(access_token, refresh_token)
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { cache: 'no-store' })
   if (!res.ok) throw new Error(`API error ${res.status}: ${path}`)
   return res.json()
 }
 
-async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function authFetch<T>(path: string, options: RequestInit = {}, _retry = true): Promise<T> {
   const token = getToken()
   const res = await fetch(`${BASE}${path}`, {
     ...options,
@@ -32,6 +63,16 @@ async function authFetch<T>(path: string, options: RequestInit = {}): Promise<T>
       ...options.headers,
     },
   })
+
+  // Access Token 만료(401) → Refresh Token으로 재발급 후 1회 재시도
+  if (res.status === 401 && _retry) {
+    const refreshed = await tryRefreshToken()
+    if (refreshed) return authFetch<T>(path, options, false)
+    // 갱신 실패 → 로그아웃 처리
+    const { useAuthStore } = await import('./authStore')
+    useAuthStore.getState().logout()
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail ?? `API error ${res.status}`)

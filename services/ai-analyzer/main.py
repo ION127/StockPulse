@@ -24,6 +24,18 @@ import sys
 
 from confluent_kafka import Consumer, KafkaError, Producer
 
+# DLQ 헬퍼 (core/ 공유 모듈)
+try:
+    import sys as _sys, os as _os
+    _root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
+    from core.kafka_dlq import send_to_dlq
+    from core.circuit_breaker import CircuitOpenError
+    _DLQ_AVAILABLE = True
+except ImportError:
+    _DLQ_AVAILABLE = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
@@ -95,18 +107,25 @@ def main():
                 ticker = data["ticker"]
                 logger.info(f"AI 분석 중: {ticker}")
 
-                analysis = analyze_anomaly(
-                    ticker=ticker,
-                    category=data.get("sector", ""),
-                    return_pct=data["return_pct"],
-                    direction=data["direction"],
-                    date=data.get("date", ""),
-                    close_price=data.get("close_price", 0) or 0,
-                    news_text=data.get("news_text", ""),
-                    event_type=data.get("event_type", "INDIVIDUAL"),
-                    sector_peer_count=data.get("sector_peer_count", 1) or 1,
-                    moving_sector_count=data.get("moving_sector_count", 1) or 1,
-                )
+                try:
+                    analysis = analyze_anomaly(
+                        ticker=ticker,
+                        category=data.get("sector", ""),
+                        return_pct=data["return_pct"],
+                        direction=data["direction"],
+                        date=data.get("date", ""),
+                        close_price=data.get("close_price", 0) or 0,
+                        news_text=data.get("news_text", ""),
+                        event_type=data.get("event_type", "INDIVIDUAL"),
+                        sector_peer_count=data.get("sector_peer_count", 1) or 1,
+                        moving_sector_count=data.get("moving_sector_count", 1) or 1,
+                    )
+                except Exception as api_err:
+                    # Circuit Breaker OPEN 또는 재시도 초과 → DLQ로 이동
+                    if _DLQ_AVAILABLE:
+                        send_to_dlq(producer, "news.fetched", msg.value(), msg.key(), api_err)
+                    logger.error(f"Gemini 호출 실패 [{ticker}] → DLQ: {api_err}")
+                    continue
 
                 # news_text는 프롬프트용이므로 downstream에 전달 불필요
                 payload = {k: v for k, v in data.items() if k != "news_text"}

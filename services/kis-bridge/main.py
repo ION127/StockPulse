@@ -43,6 +43,18 @@ from datetime import datetime, timedelta
 import aiohttp
 import websockets
 
+# 마켓 캘린더 (core/ 공유 모듈)
+try:
+    import sys as _sys
+    import os as _os
+    _root = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
+    from core.market_calendar import is_kr_market_open, seconds_until_kr_open
+    _CALENDAR_AVAILABLE = True
+except ImportError:
+    _CALENDAR_AVAILABLE = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
@@ -301,6 +313,47 @@ async def _flush_loop(producer) -> None:
             logger.error(f"플러시 오류: {e}", exc_info=True)
 
 
+# ── 마켓 세션 관리 ────────────────────────────────────────────────────────────
+
+async def _interruptible_sleep(seconds: float) -> None:
+    """SIGTERM 대응을 위해 최대 60초 단위로 나눠서 sleep."""
+    sleep_end = asyncio.get_event_loop().time() + seconds
+    while _running:
+        remaining = sleep_end - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            break
+        await asyncio.sleep(min(60, remaining))
+
+
+async def _run_market_session(
+    auth: "KisAuth",
+    producer,
+    batches: list[list[str]],
+) -> None:
+    """KRX 개장 시간 동안 WebSocket 연결 + 1분봉 플러시 유지."""
+    tasks = [
+        asyncio.create_task(_ws_worker(auth, batch, idx))
+        for idx, batch in enumerate(batches)
+    ]
+    tasks.append(asyncio.create_task(_flush_loop(producer)))
+
+    try:
+        # 매 60초마다 폐장 여부 확인
+        while _running:
+            if _CALENDAR_AVAILABLE and not is_kr_market_open():
+                logger.info("KRX 폐장 감지 — WebSocket 세션 종료")
+                break
+            await asyncio.sleep(60)
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    # 잔여 1분봉 최종 플러시
+    _flush_candles(producer)
+    logger.info("세션 종료 — 잔여 캔들 플러시 완료")
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 async def async_main() -> None:
@@ -327,24 +380,35 @@ async def async_main() -> None:
     auth     = KisAuth(KIS_APP_KEY, KIS_APP_SECRET)
     producer = _build_producer()
 
-    # 토큰 미리 발급
-    await auth.get_access_token()
-    await auth.get_approval_key()
-
     kr_tickers = get_all_kr_tickers()
     logger.info(f"모니터링 종목: {len(kr_tickers)}개")
 
-    # 40개씩 분할 → 다중 WebSocket 연결
     batches = [kr_tickers[i:i + WS_BATCH_SIZE] for i in range(0, len(kr_tickers), WS_BATCH_SIZE)]
     logger.info(f"WebSocket 연결 수: {len(batches)}개 (연결당 최대 {WS_BATCH_SIZE}종목)")
 
-    tasks = [
-        asyncio.create_task(_ws_worker(auth, batch, idx))
-        for idx, batch in enumerate(batches)
-    ]
-    tasks.append(asyncio.create_task(_flush_loop(producer)))
+    while _running:
+        # ── 장 시간 가드 ──────────────────────────────────────────────────
+        if _CALENDAR_AVAILABLE and not is_kr_market_open():
+            secs = seconds_until_kr_open()
+            hrs, mins = divmod(int(secs) // 60, 60)
+            logger.info(
+                f"KRX 장 외 시간 — {hrs}시간 {mins}분 후 개장 대기 중"
+            )
+            await _interruptible_sleep(secs)
+            continue
 
-    await asyncio.gather(*tasks, return_exceptions=True)
+        # ── 개장: 토큰 발급 후 세션 시작 ─────────────────────────────────
+        logger.info("KRX 개장 — 토큰 발급 및 WebSocket 세션 시작")
+        try:
+            await auth.get_access_token()
+            await auth.get_approval_key()
+        except Exception as e:
+            logger.error(f"토큰 발급 실패: {e} — 60초 후 재시도")
+            await asyncio.sleep(60)
+            continue
+
+        await _run_market_session(auth, producer, batches)
+
     logger.info("[kis-bridge] 종료")
 
 
