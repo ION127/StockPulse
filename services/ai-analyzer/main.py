@@ -3,8 +3,8 @@ AI Analyzer 서비스 — Phase 3
 
 역할:
   - Kafka Topic 'news.fetched' 구독
-  - Gemini 2.5 Flash로 한/영 이상값 원인 분석
-  - Gemini Rate Limit 대응: 분당 15회 제한 → 5초 간격 자동 조절
+  - Gemini 1.5 Flash로 한/영 이상값 원인 분석 (무료 1,500 RPD)
+  - Gemini Rate Limit 대응: 분당 15회 제한 → 7초 간격 자동 조절
   - Kafka Topic 'analysis.completed'에 발행
 
 메시지 형식 (analysis.completed):

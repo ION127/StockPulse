@@ -1,7 +1,7 @@
 """
 Gemini API를 사용한 주식 이상값 분석 모듈
 영문/한국어 동시 분석 결과 제공
-무료 티어: gemini-2.5-flash (분당 10회, 하루 500회)
+무료 티어: gemini-1.5-flash (분당 15회, 하루 1,500회)
 """
 
 import os
@@ -49,7 +49,7 @@ def _call_gemini(prompt: str, max_tokens: int = 3000, retries: int = 3) -> str:
         try:
             _last_call_time = time.time()
             response = _get_client().models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-1.5-flash",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=_SYSTEM_INSTRUCTION,
