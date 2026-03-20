@@ -77,16 +77,54 @@ jobs:
 
           echo "=== 빌드 대상 서비스 ==="
 
-          # 각 서비스 감지 규칙
-          # core/, db/, schemas/, requirements.txt 변경 시 연관 서비스 모두 포함
-          check_service "api"              "^services/api/"          "^core/"    "^db/"       "^schemas/"  "^requirements\.txt$"
-          check_service "stock_collector"  "^services/stock-collector/" "^core/" "^requirements\.txt$"
-          check_service "kis_bridge"       "^services/kis-bridge/"
-          check_service "anomaly_detector" "^services/anomaly-detector/" "^core/" "^requirements\.txt$"
-          check_service "news_fetcher"     "^services/news-fetcher/"  "^core/"   "^requirements\.txt$"
-          check_service "ai_analyzer"      "^services/ai-analyzer/"   "^core/"   "^requirements\.txt$"
-          check_service "notifier"         "^services/notifier/"      "^core/"   "^requirements\.txt$"
-          check_service "frontend"         "^frontend/"
+          # ── core 파일 → 의존 서비스 매핑 ──────────────────────────────────
+          # core/ai_analyzer.py     → api, ai-analyzer
+          # core/news_fetcher.py    → api, news-fetcher
+          # core/stock_fetcher.py   → api, stock-collector, anomaly-detector
+          # core/stock_categories.py→ api, stock-collector, anomaly-detector, news-fetcher, ai-analyzer
+          # db/, schemas/           → api 전용
+          # requirements.txt        → 변경된 패키지를 쓰는 서비스만 (전체 안전하게 포함)
+
+          check_service "api"              \
+            "^services/api/"               \
+            "^core/"                       \
+            "^db/"                         \
+            "^schemas/"                    \
+            "^requirements\.txt$"
+
+          check_service "stock_collector"  \
+            "^services/stock-collector/"   \
+            "^core/stock_fetcher\.py"      \
+            "^core/stock_categories\.py"   \
+            "^requirements\.txt$"
+
+          check_service "kis_bridge"       \
+            "^services/kis-bridge/"
+
+          check_service "anomaly_detector" \
+            "^services/anomaly-detector/"  \
+            "^core/stock_fetcher\.py"      \
+            "^core/stock_categories\.py"   \
+            "^requirements\.txt$"
+
+          check_service "news_fetcher"     \
+            "^services/news-fetcher/"      \
+            "^core/news_fetcher\.py"       \
+            "^core/stock_categories\.py"   \
+            "^requirements\.txt$"
+
+          check_service "ai_analyzer"      \
+            "^services/ai-analyzer/"       \
+            "^core/ai_analyzer\.py"        \
+            "^requirements\.txt$"
+
+          check_service "notifier"         \
+            "^services/notifier/"          \
+            "^core/stock_categories\.py"   \
+            "^requirements\.txt$"
+
+          check_service "frontend"         \
+            "^frontend/"
 
   # ── 2단계: 변경된 서비스만 빌드 & 푸시 ──────────────────────────────────────
   build-and-push:
