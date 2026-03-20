@@ -35,7 +35,7 @@ export default function SearchBar() {
   }, [])
 
   return (
-    <div ref={ref} className="relative w-64">
+    <div ref={ref} className="relative w-full">
       <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg focus-within:border-indigo-500 transition-colors">
         <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

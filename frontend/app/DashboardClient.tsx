@@ -37,24 +37,25 @@ export default function DashboardClient({ initialAnomalies, initialSectorTrends,
       <div className="min-h-screen flex flex-col bg-gray-950">
         <Header lastUpdated={lastUpdated} />
 
-        <main className="flex-1 p-4 grid gap-4" style={{ gridTemplateRows: 'auto 1fr auto' }}>
+        <main className="flex-1 p-3 md:p-4 flex flex-col gap-4">
           {/* 상단 행: 섹터 히트맵 + 이상값 목록 + 관심종목/포트폴리오 */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" style={{ maxHeight: '320px' }}>
-            <div className="lg:col-span-1 overflow-hidden">
-              <SectorHeatmap />
-            </div>
-            <div className="lg:col-span-1 overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* 섹터 히트맵: 자연 높이 */}
+            <SectorHeatmap />
+            {/* 이상값 목록: 내부 h-full을 위해 명시적 높이 지정 */}
+            <div className="h-72 lg:h-80">
               <AnomalyList />
             </div>
-            <div className="lg:col-span-1 overflow-hidden">
+            {/* 관심 종목 / 포트폴리오: 내부 h-full을 위해 명시적 높이 지정 */}
+            <div className="h-72 lg:h-80">
               <PortfolioPanel />
             </div>
           </div>
 
           {/* 하단 행: 주가 차트 + AI 분석 패널 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <StockChart />
-            <div style={{ minHeight: '240px' }}>
+            <div className="min-h-[240px]">
               <AnalysisPanel />
             </div>
           </div>

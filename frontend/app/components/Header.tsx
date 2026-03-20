@@ -39,33 +39,48 @@ export default function Header({ lastUpdated }: { lastUpdated: string }) {
   }
 
   return (
-    <header className="flex items-center justify-between px-6 py-3 bg-gray-900 border-b border-gray-800">
-      <div className="flex items-center gap-3">
-        <span className="text-lg font-bold tracking-tight">주식 이상값 AI 분석기</span>
-        <span className="text-xs text-gray-400">마지막 업데이트: {lastUpdated}</span>
+    <header className="bg-gray-900 border-b border-gray-800 px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
+      {/* 브랜드 */}
+      <div className="flex items-center gap-2 min-w-0 shrink-0">
+        <span className="text-base font-bold tracking-tight whitespace-nowrap">주식 이상값 AI 분석기</span>
+        <span className="hidden lg:block text-xs text-gray-400 truncate">마지막 업데이트: {lastUpdated}</span>
       </div>
-      <div className="flex items-center gap-4">
+
+      {/* 데스크톱 여백 */}
+      <div className="hidden md:block flex-1" />
+
+      {/* 검색바: 모바일은 마지막 줄 전체 너비, md+는 인라인 고정 너비 */}
+      <div className="order-last w-full md:order-none md:w-52 lg:w-64">
         <SearchBar />
+      </div>
+
+      {/* 우측 컨트롤 */}
+      <div className="flex items-center gap-2 ml-auto md:ml-0 shrink-0">
+        {/* WS 상태 */}
         <div className="flex items-center gap-1.5">
-          <span className={`h-2 w-2 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-gray-600'}`} />
-          <span className="text-xs text-gray-400">{wsConnected ? '실시간 연결됨' : '연결 끊김'}</span>
+          <span className={`h-2 w-2 rounded-full shrink-0 ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-gray-600'}`} />
+          <span className="hidden sm:block text-xs text-gray-400 whitespace-nowrap">
+            {wsConnected ? '실시간' : '끊김'}
+          </span>
         </div>
+
+        {/* 분석 실행 버튼 */}
         <button
           onClick={triggerAnalysis}
           disabled={triggering}
-          className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:cursor-not-allowed rounded font-medium transition-colors"
+          className="px-2.5 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:cursor-not-allowed rounded font-medium transition-colors whitespace-nowrap"
         >
-          {triggering ? `분석 중... (${runningJobId})` : '수동 분석 실행'}
+          {triggering ? '분석 중...' : <><span className="hidden sm:inline">수동 </span>분석 실행</>}
         </button>
 
         {/* 로그인 / 유저 정보 */}
         {user ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-300">{user.email}</span>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-900 text-indigo-300">{user.tier}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="hidden sm:block text-xs text-gray-300 max-w-[100px] truncate">{user.email}</span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-900 text-indigo-300 shrink-0">{user.tier}</span>
             <button
               onClick={logout}
-              className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded font-medium transition-colors"
+              className="px-2.5 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded font-medium transition-colors whitespace-nowrap"
             >
               로그아웃
             </button>
@@ -73,7 +88,7 @@ export default function Header({ lastUpdated }: { lastUpdated: string }) {
         ) : (
           <button
             onClick={() => setOpenAuthModal(true)}
-            className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded font-medium transition-colors"
+            className="px-2.5 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded font-medium transition-colors whitespace-nowrap"
           >
             로그인
           </button>

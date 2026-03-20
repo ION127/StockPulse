@@ -44,7 +44,7 @@ export default function SectorHeatmap() {
   return (
     <div className="rounded-lg bg-gray-900 p-4">
       <h2 className="text-sm font-semibold text-gray-300 mb-3">섹터 히트맵 (7일)</h2>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {trends.map((t) => (
           <button
             key={t.sector}
