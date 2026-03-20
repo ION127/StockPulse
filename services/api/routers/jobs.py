@@ -106,7 +106,10 @@ async def _run_reanalyze_job(job_id: str, days: int, min_length: int):
 
             targets = [
                 a for a in anomalies
-                if a.analysis is None or len(a.analysis.analysis_ko or "") < min_length
+                if a.analysis is None
+                or len(a.analysis.analysis_ko or "") < min_length
+                or (a.analysis.analysis_ko or "").startswith("분석 실패")
+                or (a.analysis.analysis_ko or "").startswith("Analysis failed")
             ]
 
             logger.info(f"[reanalyze] 대상 {len(targets)}건 (전체 {len(anomalies)}건 중, 최근 {days}일)")
