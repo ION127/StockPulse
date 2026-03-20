@@ -8,8 +8,16 @@ import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
 
 from db.connection import init_db, AsyncSessionLocal
 from routers import anomalies, sectors, jobs, stocks, auth, user
@@ -203,18 +211,26 @@ async def lifespan(app: FastAPI):
 
 # ── FastAPI 앱 ────────────────────────────────────────────────────────────
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+
 app = FastAPI(
     title="주식 이상값 AI 분석기",
     description="실시간 주가 이상값 감지 및 AI 원인 분석 (한국어/영어)",
     version="2.0.0",
     lifespan=lifespan,
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "PUT"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # Prometheus 계측 (설치되어 있을 때만 활성)
@@ -252,6 +268,15 @@ for _route in list(app.routes):
 
 @app.websocket("/ws/live")
 async def websocket_endpoint(ws: WebSocket):
+    # 토큰이 있으면 검증, 없으면 익명으로 연결 허용 (공개 데이터)
+    token = ws.query_params.get("token")
+    if token:
+        from services.auth_service import _decode_token
+        try:
+            _decode_token(token, "access")
+        except Exception:
+            await ws.close(code=1008)  # Policy Violation
+            return
     await ws_manager.connect(ws)
     try:
         while True:

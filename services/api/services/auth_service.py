@@ -22,7 +22,9 @@ from db.models import User
 
 # ── 설정 ─────────────────────────────────────────────────────────────────
 
-SECRET_KEY = os.getenv("JWT_SECRET", "change-me-in-production-please")
+SECRET_KEY = os.getenv("JWT_SECRET")
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET 환경변수가 설정되지 않았습니다. k8s secret 또는 .env를 확인하세요.")
 ALGORITHM  = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES  = 15
 REFRESH_TOKEN_EXPIRE_DAYS    = 30
