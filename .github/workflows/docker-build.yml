@@ -7,26 +7,100 @@ on:
     paths-ignore:
       - 'k8s/**'
       - '*.md'
-  workflow_dispatch:  # 수동 실행 허용
-
-env:
-  SHORT_SHA: ${{ github.sha }}
+  workflow_dispatch:  # 수동 실행 시 모든 서비스 빌드
 
 jobs:
+  # ── 1단계: 변경된 서비스 감지 ────────────────────────────────────────────────
+  detect-changes:
+    runs-on: self-hosted
+    outputs:
+      api:              ${{ steps.check.outputs.api }}
+      stock_collector:  ${{ steps.check.outputs.stock_collector }}
+      kis_bridge:       ${{ steps.check.outputs.kis_bridge }}
+      anomaly_detector: ${{ steps.check.outputs.anomaly_detector }}
+      news_fetcher:     ${{ steps.check.outputs.news_fetcher }}
+      ai_analyzer:      ${{ steps.check.outputs.ai_analyzer }}
+      notifier:         ${{ steps.check.outputs.notifier }}
+      frontend:         ${{ steps.check.outputs.frontend }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed services
+        id: check
+        run: |
+          # ── 수동 트리거: 모든 서비스 빌드 ──────────────────────────────────
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "수동 트리거 → 전체 빌드"
+            for svc in api stock_collector kis_bridge anomaly_detector news_fetcher ai_analyzer notifier frontend; do
+              echo "${svc}=true" >> $GITHUB_OUTPUT
+            done
+            exit 0
+          fi
+
+          # ── Push 이벤트: 변경 파일 감지 ─────────────────────────────────────
+          BASE="${{ github.event.before }}"
+          HEAD="${{ github.sha }}"
+
+          if [ "$BASE" = "0000000000000000000000000000000000000000" ] || [ -z "$BASE" ]; then
+            CHANGED=$(git show --name-only --format="" HEAD)
+          else
+            CHANGED=$(git diff --name-only "$BASE" "$HEAD" 2>/dev/null || git diff --name-only HEAD~1 HEAD)
+          fi
+
+          echo "=== 변경된 파일 ==="
+          echo "$CHANGED"
+          echo "==================="
+
+          # 패턴 매칭 함수
+          has_change() {
+            for pattern in "$@"; do
+              echo "$CHANGED" | grep -qE "$pattern" && return 0
+            done
+            return 1
+          }
+
+          # 서비스별 변경 감지 함수
+          check_service() {
+            local service=$1
+            shift
+            if has_change "$@"; then
+              echo "${service}=true" >> $GITHUB_OUTPUT
+              echo "  ✓ ${service} 빌드 예정"
+            else
+              echo "${service}=false" >> $GITHUB_OUTPUT
+              echo "  - ${service} 스킵"
+            fi
+          }
+
+          echo "=== 빌드 대상 서비스 ==="
+
+          # 각 서비스 감지 규칙
+          # core/, db/, schemas/, requirements.txt 변경 시 연관 서비스 모두 포함
+          check_service "api"              "^services/api/"          "^core/"    "^db/"       "^schemas/"  "^requirements\.txt$"
+          check_service "stock_collector"  "^services/stock-collector/" "^core/" "^requirements\.txt$"
+          check_service "kis_bridge"       "^services/kis-bridge/"
+          check_service "anomaly_detector" "^services/anomaly-detector/" "^core/" "^requirements\.txt$"
+          check_service "news_fetcher"     "^services/news-fetcher/"  "^core/"   "^requirements\.txt$"
+          check_service "ai_analyzer"      "^services/ai-analyzer/"   "^core/"   "^requirements\.txt$"
+          check_service "notifier"         "^services/notifier/"      "^core/"   "^requirements\.txt$"
+          check_service "frontend"         "^frontend/"
+
+  # ── 2단계: 변경된 서비스만 빌드 & 푸시 ──────────────────────────────────────
   build-and-push:
-    runs-on: self-hosted  # Harbor가 로컬에 있으므로 self-hosted runner 사용
+    needs: detect-changes
+    runs-on: self-hosted
     permissions:
       contents: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      # SHORT_SHA 환경변수 설정 (7자리)
       - name: Set short SHA
         run: echo "SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_ENV
 
-      # Harbor 로그인
       - name: Log in to Harbor
         uses: docker/login-action@v4
         with:
@@ -34,17 +108,17 @@ jobs:
           username: ${{ secrets.HARBOR_USER }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
-      # Docker Buildx 설정
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
         with:
           driver: docker
 
       # ─────────────────────────────────────────────
-      # 백엔드 서비스 빌드 (build context: root)
+      # 백엔드 서비스 (build context: root)
       # ─────────────────────────────────────────────
 
       - name: Build and push api
+        if: needs.detect-changes.outputs.api == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -55,6 +129,7 @@ jobs:
             ${{ secrets.HARBOR_URL }}/stock/api:latest
 
       - name: Build and push stock-collector
+        if: needs.detect-changes.outputs.stock_collector == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -65,6 +140,7 @@ jobs:
             ${{ secrets.HARBOR_URL }}/stock/stock-collector:latest
 
       - name: Build and push kis-bridge
+        if: needs.detect-changes.outputs.kis_bridge == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -75,6 +151,7 @@ jobs:
             ${{ secrets.HARBOR_URL }}/stock/kis-bridge:latest
 
       - name: Build and push anomaly-detector
+        if: needs.detect-changes.outputs.anomaly_detector == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -85,6 +162,7 @@ jobs:
             ${{ secrets.HARBOR_URL }}/stock/anomaly-detector:latest
 
       - name: Build and push news-fetcher
+        if: needs.detect-changes.outputs.news_fetcher == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -95,6 +173,7 @@ jobs:
             ${{ secrets.HARBOR_URL }}/stock/news-fetcher:latest
 
       - name: Build and push ai-analyzer
+        if: needs.detect-changes.outputs.ai_analyzer == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -105,6 +184,7 @@ jobs:
             ${{ secrets.HARBOR_URL }}/stock/ai-analyzer:latest
 
       - name: Build and push notifier
+        if: needs.detect-changes.outputs.notifier == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -115,10 +195,11 @@ jobs:
             ${{ secrets.HARBOR_URL }}/stock/notifier:latest
 
       # ─────────────────────────────────────────────
-      # 프론트엔드 빌드 (build context: ./frontend)
+      # 프론트엔드 (build context: ./frontend)
       # ─────────────────────────────────────────────
 
       - name: Build and push frontend
+        if: needs.detect-changes.outputs.frontend == 'true'
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
@@ -129,32 +210,39 @@ jobs:
             ${{ secrets.HARBOR_URL }}/stock/frontend:latest
 
       # ─────────────────────────────────────────────
-      # K8s 매니페스트 이미지 태그 업데이트 (GitOps)
+      # 변경된 서비스의 K8s 매니페스트만 업데이트
       # ─────────────────────────────────────────────
 
-      - name: Update image tags in K8s manifests
+      - name: Update K8s manifests for changed services
         run: |
-          SERVICES="api stock-collector kis-bridge anomaly-detector news-fetcher ai-analyzer notifier frontend"
           HARBOR="${{ secrets.HARBOR_URL }}"
 
-          for SERVICE in $SERVICES; do
-            MANIFEST="k8s/${SERVICE}/deployment.yaml"
+          update_manifest() {
+            local SERVICE_DIR=$1   # 디렉토리 이름 (하이픈 포함)
+            local MANIFEST="k8s/${SERVICE_DIR}/deployment.yaml"
             if [ -f "$MANIFEST" ]; then
-              sed -i "s|${HARBOR}/stock/${SERVICE}:[^ ]*|${HARBOR}/stock/${SERVICE}:${SHORT_SHA}|g" "$MANIFEST"
-              echo "Updated ${MANIFEST} to tag ${SHORT_SHA}"
-            else
-              echo "Warning: ${MANIFEST} not found, skipping"
+              sed -i "s|${HARBOR}/stock/${SERVICE_DIR}:[^ ]*|${HARBOR}/stock/${SERVICE_DIR}:${SHORT_SHA}|g" "$MANIFEST"
+              echo "  ✓ ${MANIFEST} → ${SHORT_SHA}"
             fi
-          done
+          }
 
-      # 변경된 매니페스트를 git에 커밋
+          echo "=== K8s 매니페스트 업데이트 ==="
+          [ "${{ needs.detect-changes.outputs.api }}"              = "true" ] && update_manifest "api"
+          [ "${{ needs.detect-changes.outputs.stock_collector }}"  = "true" ] && update_manifest "stock-collector"
+          [ "${{ needs.detect-changes.outputs.kis_bridge }}"       = "true" ] && update_manifest "kis-bridge"
+          [ "${{ needs.detect-changes.outputs.anomaly_detector }}" = "true" ] && update_manifest "anomaly-detector"
+          [ "${{ needs.detect-changes.outputs.news_fetcher }}"     = "true" ] && update_manifest "news-fetcher"
+          [ "${{ needs.detect-changes.outputs.ai_analyzer }}"      = "true" ] && update_manifest "ai-analyzer"
+          [ "${{ needs.detect-changes.outputs.notifier }}"         = "true" ] && update_manifest "notifier"
+          [ "${{ needs.detect-changes.outputs.frontend }}"         = "true" ] && update_manifest "frontend"
+
       - name: Commit updated manifests
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           if git diff --quiet k8s/; then
-            echo "No manifest changes to commit"
+            echo "변경된 매니페스트 없음 (스킵)"
           else
             git add k8s/
             git commit -m "ci: update image tags to ${SHORT_SHA} [skip ci]"
