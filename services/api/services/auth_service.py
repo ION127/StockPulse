@@ -6,6 +6,7 @@
 - Refresh Token: 30일
 """
 
+import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -35,12 +36,17 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 # ── 비밀번호 ──────────────────────────────────────────────────────────────
 
+def _normalize_password(plain: str) -> str:
+    """bcrypt의 72바이트 제한 우회: SHA-256 hex digest(64바이트)로 정규화"""
+    return hashlib.sha256(plain.encode()).hexdigest()
+
+
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    return pwd_context.hash(_normalize_password(plain))
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return pwd_context.verify(_normalize_password(plain), hashed)
 
 
 # ── 토큰 발급 ─────────────────────────────────────────────────────────────
