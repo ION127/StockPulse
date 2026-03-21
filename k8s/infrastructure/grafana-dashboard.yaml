@@ -305,12 +305,12 @@ data:
           "targets": [
             {
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"stock\", container!=\"\"}[5m])) / sum by (pod) (kube_pod_container_resource_limits{namespace=\"stock\", resource=\"cpu\"})",
+              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"stock\", container!=\"\", container!=\"POD\"}[5m]))",
               "legendFormat": "{{pod}}",
               "refId": "A"
             }
           ],
-          "title": "Pod CPU 사용률 (% of limit)",
+          "title": "Pod CPU 사용량 (cores)",
           "type": "timeseries"
         },
         {
