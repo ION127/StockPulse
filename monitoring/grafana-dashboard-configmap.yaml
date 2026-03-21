@@ -281,7 +281,7 @@ data:
           "collapsed": false,
           "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
           "id": 103,
-          "title": "K8s 리소스 사용량",
+          "title": "노드 리소스 사용량 (node-exporter)",
           "type": "row"
         },
         {
@@ -289,15 +289,18 @@ data:
           "fieldConfig": {
             "defaults": {
               "color": { "mode": "palette-classic" },
-              "custom": {
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "lineWidth": 1,
-                "showPoints": "never"
-              },
+              "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
               "unit": "percentunit",
               "max": 1,
-              "min": 0
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 0.7 },
+                  { "color": "red", "value": 0.9 }
+                ]
+              }
             }
           },
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
@@ -305,12 +308,12 @@ data:
           "targets": [
             {
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"stock\", container!=\"\", container!=\"POD\"}[5m]))",
-              "legendFormat": "{{pod}}",
+              "expr": "1 - avg by (node) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))",
+              "legendFormat": "{{node}} CPU",
               "refId": "A"
             }
           ],
-          "title": "Pod CPU 사용량 (cores)",
+          "title": "노드 CPU 사용률 (%)",
           "type": "timeseries"
         },
         {
@@ -318,13 +321,18 @@ data:
           "fieldConfig": {
             "defaults": {
               "color": { "mode": "palette-classic" },
-              "custom": {
-                "drawStyle": "line",
-                "fillOpacity": 10,
-                "lineWidth": 1,
-                "showPoints": "never"
-              },
-              "unit": "bytes"
+              "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
+              "unit": "percentunit",
+              "max": 1,
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 0.75 },
+                  { "color": "red", "value": 0.9 }
+                ]
+              }
             }
           },
           "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
@@ -332,12 +340,130 @@ data:
           "targets": [
             {
               "datasource": { "type": "prometheus", "uid": "prometheus" },
-              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"stock\", container!=\"\"})",
+              "expr": "1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes",
+              "legendFormat": "{{node}} 메모리",
+              "refId": "A"
+            }
+          ],
+          "title": "노드 메모리 사용률 (%)",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+          "id": 104,
+          "title": "Pod 리소스 사용량 (kube-state-metrics)",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" },
+              "unit": "percentunit",
+              "max": 1,
+              "min": 0
+            }
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+          "id": 9,
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"stock\", container!=\"\", container!=\"POD\"}[5m])) / sum by (pod) (kube_pod_container_resource_limits{namespace=\"stock\", resource=\"cpu\"})",
               "legendFormat": "{{pod}}",
               "refId": "A"
             }
           ],
-          "title": "Pod 메모리 사용량",
+          "title": "Pod CPU 사용률 (limit 대비 %)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" },
+              "unit": "percentunit",
+              "max": 1,
+              "min": 0
+            }
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
+          "id": 10,
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"stock\", container!=\"\", container!=\"POD\"}) / sum by (pod) (kube_pod_container_resource_limits{namespace=\"stock\", resource=\"memory\"})",
+              "legendFormat": "{{pod}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Pod 메모리 사용률 (limit 대비 %)",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 },
+          "id": 105,
+          "title": "네트워크 & 디스크 I/O",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "drawStyle": "line", "fillOpacity": 5, "lineWidth": 1, "showPoints": "never" },
+              "unit": "Bps"
+            }
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
+          "id": 11,
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|flannel.*|cali.*\"}[5m])",
+              "legendFormat": "{{node}} {{device}} 수신",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "-rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|flannel.*|cali.*\"}[5m])",
+              "legendFormat": "{{node}} {{device}} 송신",
+              "refId": "B"
+            }
+          ],
+          "title": "노드 네트워크 I/O (수신↑ / 송신↓)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "drawStyle": "line", "fillOpacity": 5, "lineWidth": 1, "showPoints": "never" },
+              "unit": "Bps"
+            }
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 },
+          "id": 12,
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "rate(node_disk_read_bytes_total[5m])",
+              "legendFormat": "{{node}} {{device}} 읽기",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "-rate(node_disk_written_bytes_total[5m])",
+              "legendFormat": "{{node}} {{device}} 쓰기",
+              "refId": "B"
+            }
+          ],
+          "title": "노드 디스크 I/O (읽기↑ / 쓰기↓)",
           "type": "timeseries"
         }
       ],

@@ -120,6 +120,24 @@ data:
           - source_labels: [__meta_kubernetes_namespace]
             target_label: namespace
 
+      # ── kube-state-metrics (K8s 오브젝트 상태 / resource limits) ────
+      - job_name: 'kube-state-metrics'
+        static_configs:
+          - targets: ['kube-state-metrics:8080']
+
+      # ── node-exporter (노드 CPU%, 메모리%, 디스크, 네트워크) ─────────
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - source_labels: [__address__]
+            action: replace
+            regex: ([^:]+)(?::\d+)?
+            replacement: $1:9100
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: node
+
       # ── Kubernetes 노드 메트릭 ────────────────────────────────────────
       - job_name: 'kubernetes-nodes'
         kubernetes_sd_configs:
