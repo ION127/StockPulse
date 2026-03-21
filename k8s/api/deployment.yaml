@@ -21,6 +21,10 @@ spec:
       labels:
         app: api
         app.kubernetes.io/name: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
     spec:
       affinity:
         nodeAffinity:
