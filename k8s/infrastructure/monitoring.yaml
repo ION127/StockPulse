@@ -167,7 +167,7 @@ spec:
                   - key: node-tier
                     operator: In
                     values:
-                      - light
+                      - heavy
       serviceAccountName: prometheus
       containers:
         - name: prometheus
