@@ -219,7 +219,9 @@ data:
       - name: Prometheus
         type: prometheus
         uid: prometheus
-        url: http://prometheus-service:9090
+        # --web.route-prefix=/prometheus 설정으로 인해 API 경로가 /prometheus 아래로 이동
+        # Grafana는 내부적으로 /api/v1/query 를 호출하므로 base URL에 /prometheus 포함 필요
+        url: http://prometheus-service:9090/prometheus
         access: proxy
         isDefault: true
         editable: true
