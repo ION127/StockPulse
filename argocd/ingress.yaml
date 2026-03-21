@@ -21,11 +21,23 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
+    # 로컬 UI 접속용 (hosts 파일에 10.0.2.200 argocd.local 등록 필요)
     - host: argocd.local
       http:
         paths:
           - path: /
             pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
+    # GitHub Webhook 전용 — 호스트 무관, 공인IP로 접근 가능
+    # GitHub Webhook URL: http://<공인IP>/api/webhook
+    - http:
+        paths:
+          - path: /api/webhook
+            pathType: Exact
             backend:
               service:
                 name: argocd-server
