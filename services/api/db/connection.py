@@ -42,21 +42,24 @@ async def init_db(max_retries: int = 10, retry_interval: float = 3.0):
 
     for attempt in range(1, max_retries + 1):
         try:
+            # 트랜잭션 1: 테이블 생성 (hypertable 설정과 분리하여 롤백 방지)
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
 
-                try:
+            # 트랜잭션 2: hypertable 설정 (실패해도 테이블 생성에 영향 없음)
+            try:
+                async with engine.begin() as conn:
                     await conn.execute(text(
                         "SELECT create_hypertable('anomalies', 'anomaly_date', "
                         "if_not_exists => TRUE, migrate_data => TRUE);"
                     ))
                     logger.info("TimescaleDB hypertable 설정 완료")
-                except Exception as e:
-                    # 이미 hypertable인 경우 또는 TimescaleDB 미설치 — 정상 진행
-                    if "already a hypertable" in str(e):
-                        logger.info("anomalies 테이블은 이미 hypertable로 설정됨")
-                    else:
-                        logger.info(f"TimescaleDB hypertable 생략 ({e}) - 일반 PostgreSQL 테이블로 동작")
+            except Exception as e:
+                # 이미 hypertable인 경우 또는 TimescaleDB 미설치 — 정상 진행
+                if "already a hypertable" in str(e):
+                    logger.info("anomalies 테이블은 이미 hypertable로 설정됨")
+                else:
+                    logger.info(f"TimescaleDB hypertable 생략 ({e}) - 일반 PostgreSQL 테이블로 동작")
 
             logger.info("DB 초기화 완료")
             return
