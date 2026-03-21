@@ -158,6 +158,16 @@ spec:
       labels:
         app: prometheus
     spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-tier
+                    operator: In
+                    values:
+                      - light
       serviceAccountName: prometheus
       containers:
         - name: prometheus
@@ -259,6 +269,16 @@ spec:
       labels:
         app: grafana
     spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-tier
+                    operator: In
+                    values:
+                      - light
       containers:
         - name: grafana
           image: grafana/grafana:10.4.0
