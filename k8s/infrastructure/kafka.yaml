@@ -161,18 +161,20 @@ spec:
           livenessProbe:
             tcpSocket:
               port: 9092
-            initialDelaySeconds: 60
+            # 파티션 수가 많을 경우 기동에 3~5분 소요 가능
+            # 60s 이후 체크 시작 → 파티션 로딩 중 실패 → SIGTERM 유발했던 문제 수정
+            initialDelaySeconds: 180
             periodSeconds: 30
             timeoutSeconds: 10
-            failureThreshold: 3
+            failureThreshold: 5
 
           readinessProbe:
             tcpSocket:
               port: 9092
-            initialDelaySeconds: 30
-            periodSeconds: 10
+            initialDelaySeconds: 60
+            periodSeconds: 15
             timeoutSeconds: 10
-            failureThreshold: 3
+            failureThreshold: 5
 
           # ─────────────────────────────────────────────
           # 리소스 제한 설정
