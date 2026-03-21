@@ -15,6 +15,9 @@ SLACK_WEBHOOK_URL 환경변수가 설정된 경우에만 발송.
 import logging
 import os
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+_KST = ZoneInfo("Asia/Seoul")
 
 import requests
 
@@ -71,8 +74,9 @@ def _format_report(stats: dict, period_label: str) -> str:
 
 async def _gather_stats(days: int) -> dict:
     """DB에서 기간별 통계 수집."""
-    since = date.today() - timedelta(days=days)
-    until = date.today()
+    today_kst = datetime.now(_KST).date()
+    since = today_kst - timedelta(days=days)
+    until = today_kst
 
     async with AsyncSessionLocal() as db:
         from sqlalchemy import select, func, desc, text
