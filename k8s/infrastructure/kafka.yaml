@@ -158,12 +158,21 @@ spec:
           # ─────────────────────────────────────────────
           # 헬스체크
           # ─────────────────────────────────────────────
+          # startupProbe: 기동 완료 전까지 liveness/readiness를 차단
+          # __consumer_offsets 54개 파티션 로딩에 최대 10분 소요
+          # 30s + 20 × 30s = 최대 630초(10.5분) 허용
+          startupProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 20
+
           livenessProbe:
             tcpSocket:
               port: 9092
-            # 파티션 수가 많을 경우 기동에 3~5분 소요 가능
-            # 60s 이후 체크 시작 → 파티션 로딩 중 실패 → SIGTERM 유발했던 문제 수정
-            initialDelaySeconds: 180
+            # startupProbe 통과 후에만 동작
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 5
@@ -171,7 +180,6 @@ spec:
           readinessProbe:
             tcpSocket:
               port: 9092
-            initialDelaySeconds: 60
             periodSeconds: 15
             timeoutSeconds: 10
             failureThreshold: 5
