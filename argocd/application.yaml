@@ -42,3 +42,31 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 3m
+
+  # StatefulSet volumeClaimTemplates에 Kubernetes가 자동 추가하는 필드 무시
+  # (volumeMode, status 등 → 영구 OutOfSync 방지)
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      name: kafka
+      namespace: stock
+      jqPathExpressions:
+        - .spec.volumeClaimTemplates[].spec.volumeMode
+        - .spec.volumeClaimTemplates[].spec.storageClassName
+        - .spec.volumeClaimTemplates[].status
+    - group: apps
+      kind: StatefulSet
+      name: timescaledb
+      namespace: stock
+      jqPathExpressions:
+        - .spec.volumeClaimTemplates[].spec.volumeMode
+        - .spec.volumeClaimTemplates[].spec.storageClassName
+        - .spec.volumeClaimTemplates[].status
+    - group: apps
+      kind: StatefulSet
+      name: zookeeper
+      namespace: stock
+      jqPathExpressions:
+        - .spec.volumeClaimTemplates[].spec.volumeMode
+        - .spec.volumeClaimTemplates[].spec.storageClassName
+        - .spec.volumeClaimTemplates[].status
