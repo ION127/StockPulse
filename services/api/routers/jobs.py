@@ -69,21 +69,22 @@ async def _run_job(job_id: str):
 # ── 과거 이상값 재분석 ─────────────────────────────────────────────────────────
 
 @router.post("/reanalyze", response_model=JobResponse)
-async def reanalyze_truncated(background_tasks: BackgroundTasks, days: int = 7, min_length: int = 200):
+async def reanalyze_truncated(background_tasks: BackgroundTasks, days: int = 7, min_length: int = 200, limit: int = 30):
     """분석이 없거나 잘린 이상값을 찾아 뉴스 수집 후 재분석.
 
     - days: 최근 며칠 이내 이상값 대상 (기본 7일)
     - min_length: 이 글자수 미만이면 잘린 것으로 판단 (기본 200자)
+    - limit: 한 번에 최대 재분석 건수 (기본 30건, Groq 하루 10만 토큰 기준)
     """
     job_id = str(uuid.uuid4())[:8]
     _jobs[job_id] = {"job_id": job_id, "status": "queued",
                      "started_at": None, "completed_at": None,
                      "anomaly_count": None, "message": None}
-    background_tasks.add_task(_run_reanalyze_job, job_id, days, min_length)
+    background_tasks.add_task(_run_reanalyze_job, job_id, days, min_length, limit)
     return JobResponse(**_jobs[job_id])
 
 
-async def _run_reanalyze_job(job_id: str, days: int, min_length: int):
+async def _run_reanalyze_job(job_id: str, days: int, min_length: int, limit: int = 30):
     from datetime import date, timedelta
     from core.ai_analyzer import analyze_anomaly
     from core.news_fetcher import fetch_news_for_anomaly, format_news_for_prompt
@@ -113,7 +114,8 @@ async def _run_reanalyze_job(job_id: str, days: int, min_length: int):
                 or (a.analysis.analysis_ko or "").startswith("Analysis failed")
             ]
 
-            logger.info(f"[reanalyze] 대상 {len(targets)}건 (전체 {len(anomalies)}건 중, 최근 {days}일)")
+            targets = targets[:limit]
+            logger.info(f"[reanalyze] 대상 {len(targets)}건 (최대 {limit}건 제한, 최근 {days}일)")
 
             for anomaly in targets:
                 try:
