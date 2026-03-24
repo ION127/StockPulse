@@ -39,6 +39,13 @@ import sys
 import time
 from datetime import datetime
 
+# 마켓 캘린더 (core/ 공유 모듈)
+try:
+    from core.market_calendar import is_us_market_open, seconds_until_us_open
+    _CALENDAR_AVAILABLE = True
+except ImportError:
+    _CALENDAR_AVAILABLE = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
@@ -121,6 +128,20 @@ def main():
     logger.info(f"미국 주식 {len(us_tickers)}개 종목 모니터링")
 
     while _running:
+        # ── 장 시간 가드 ──────────────────────────────────────────────────────
+        if _CALENDAR_AVAILABLE and not is_us_market_open():
+            secs = seconds_until_us_open()
+            hrs, mins = divmod(int(secs) // 60, 60)
+            logger.info(
+                f"NYSE 장 외 시간 — {hrs}시간 {mins}분 후 개장 대기 중 "
+                f"(최대 60분 단위로 sleep)"
+            )
+            # SIGTERM 대응을 위해 최대 60분씩 나눠서 sleep
+            sleep_end = time.time() + secs
+            while _running and time.time() < sleep_end:
+                time.sleep(min(3600, sleep_end - time.time()))
+            continue
+
         loop_start = time.time()
         try:
             us_data = fetch_us_stocks_intraday(

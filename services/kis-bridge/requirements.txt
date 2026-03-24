@@ -1,6 +1,10 @@
 # KIS Bridge 전용 의존성
 # Linux/Windows/Mac 모두 실행 가능 — Docker 지원
 
+# 시스템
+tzdata>=2024.1          # zoneinfo 타임존 데이터 (Docker slim 이미지 대응)
+
+
 # 비동기 HTTP 클라이언트 (토큰 발급)
 aiohttp>=3.9.0
 

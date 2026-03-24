@@ -9,7 +9,12 @@ import time
 import logging
 from groq import Groq
 
+from core.circuit_breaker import CircuitBreaker, CircuitOpenError
+
 logger = logging.getLogger(__name__)
+
+# Groq API용 Circuit Breaker (5회 연속 실패 시 60초 차단)
+_groq_cb = CircuitBreaker(name="groq", failure_threshold=5, recovery_timeout=60.0)
 
 _SYSTEM_INSTRUCTION = (
     "You are a professional financial analyst and market intelligence expert. "
@@ -44,18 +49,24 @@ def _call_groq(prompt: str, max_tokens: int = 3000, retries: int = 3) -> str:
     if elapsed < _MIN_INTERVAL_SEC:
         time.sleep(_MIN_INTERVAL_SEC - elapsed)
 
+    def _single_call() -> str:
+        response = _get_client().chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": _SYSTEM_INSTRUCTION},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=max_tokens,
+        )
+        return response.choices[0].message.content
+
     for attempt in range(retries):
         try:
             _last_call_time = time.time()
-            response = _get_client().chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": _SYSTEM_INSTRUCTION},
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=max_tokens,
-            )
-            return response.choices[0].message.content
+            # Circuit Breaker를 통해 호출 — OPEN 상태면 CircuitOpenError 발생
+            return _groq_cb.call(_single_call)
+        except CircuitOpenError:
+            raise  # 상위로 전파 (ai-analyzer main에서 DLQ 처리)
         except Exception as e:
             err = str(e)
             if "429" in err and attempt < retries - 1:
@@ -100,7 +111,7 @@ def analyze_anomaly(
     moving_sector_count: int = 1,
 ) -> dict[str, str]:
     """
-    Gemini API로 단일 종목 이상값 분석
+    Groq API로 단일 종목 이상값 분석
     반환: {"ko": "한국어 분석", "en": "영어 분석"}
     """
     event_focus = _EVENT_FOCUS.get(event_type, _EVENT_FOCUS["INDIVIDUAL"])
@@ -174,6 +185,8 @@ Please provide your analysis in the following exact format:
 
         return {"ko": ko_part, "en": en_part}
 
+    except CircuitOpenError:
+        raise  # ai-analyzer main.py에서 DLQ 처리
     except Exception as e:
         logger.error(f"Groq API 오류 ({ticker}): {e}")
         return {

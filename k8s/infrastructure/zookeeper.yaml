@@ -54,7 +54,7 @@ spec:
                   - key: node-tier
                     operator: In
                     values:
-                      - light
+                      - heavy
 
       containers:
         - name: zookeeper

@@ -6,6 +6,7 @@
 - Refresh Token: 30일
 """
 
+import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -13,7 +14,7 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt as _bcrypt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,18 +30,22 @@ ALGORITHM  = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES  = 15
 REFRESH_TOKEN_EXPIRE_DAYS    = 30
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
 # ── 비밀번호 ──────────────────────────────────────────────────────────────
 
+def _normalize_password(plain: str) -> bytes:
+    """어떤 길이의 비밀번호든 SHA-256(32바이트)으로 정규화 — bcrypt 72바이트 제한 우회"""
+    return hashlib.sha256(plain.encode()).digest()
+
+
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    return _bcrypt.hashpw(_normalize_password(plain), _bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return _bcrypt.checkpw(_normalize_password(plain), hashed.encode())
 
 
 # ── 토큰 발급 ─────────────────────────────────────────────────────────────

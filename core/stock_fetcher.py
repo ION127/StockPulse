@@ -173,6 +173,104 @@ def detect_anomalies(
     return anomalies
 
 
+def detect_anomalies_adaptive(
+    stock_data: dict[str, pd.DataFrame],
+    zscore_threshold: float = 2.5,
+    min_pct_threshold: float = 1.0,
+    lookback_days: int = 60,
+    volume_boost: bool = True,
+) -> list[dict]:
+    """
+    Adaptive Z-score 이상감지 — 종목별 변동성에 맞게 동적 임계값 적용.
+
+    기존 detect_anomalies() 개선 포인트:
+    1. 고정 임계값 대신 각 종목의 rolling 변동성(σ)으로 임계값을 자동 조정
+       - TSLA, 코스닥 소형주처럼 원래 변동성이 큰 종목은 더 높은 임계값 요구
+       - MSFT, 삼성전자처럼 안정적인 종목은 더 낮은 임계값으로 민감하게 반응
+    2. 거래량(Volume) 이상치가 동반되면 신뢰도(confidence) 점수 상승
+    3. 신뢰도 점수로 우선순위 정렬 → 노이즈성 시그널 하단에 배치
+
+    Args:
+        stock_data:        {ticker: OHLCV DataFrame}
+        zscore_threshold:  이상치로 판단할 Z-score 기준 (기본 2.5)
+        min_pct_threshold: 최소 % 변화율 (오탐 방지용 하한선, 기본 1.0%)
+        lookback_days:     변동성 통계를 계산할 히스토리 기간 (기본 60일)
+        volume_boost:      거래량 이상치 동반 시 신뢰도 1.5배 증가 (기본 True)
+
+    Returns:
+        이상값 목록 (confidence 내림차순 정렬)
+    """
+    anomalies = []
+    today = datetime.now().date()
+
+    for ticker, df in stock_data.items():
+        if df.empty or len(df) < 10:
+            continue
+
+        df = df.copy()
+        df["return_pct"] = df["Close"].pct_change() * 100
+        df = df.dropna(subset=["return_pct"])
+
+        if len(df) < 5:
+            continue
+
+        # 히스토리 기반 변동성 통계 (전체 또는 최근 lookback_days)
+        hist_df   = df.tail(lookback_days) if len(df) > lookback_days else df
+        hist_mean = hist_df["return_pct"].mean()
+        hist_std  = hist_df["return_pct"].std()
+
+        if hist_std <= 0:
+            continue
+
+        # 거래량 통계 (volume_boost용)
+        vol_mean = hist_df["Volume"].mean() if "Volume" in hist_df.columns else 0
+        vol_std  = hist_df["Volume"].std()  if "Volume" in hist_df.columns else 0
+
+        # 최근 데이터에서 탐지 (최대 20개 봉 — 너무 과거는 제외)
+        recent_df = df.tail(20)
+
+        for ts, row in recent_df.iterrows():
+            ret = row["return_pct"]
+            if pd.isna(ret) or abs(ret) < min_pct_threshold:
+                continue
+
+            # Z-score: 전체 히스토리의 변동성 기준으로 정규화
+            zscore = (ret - hist_mean) / hist_std
+
+            if abs(zscore) < zscore_threshold:
+                continue
+
+            # 기본 신뢰도 = Z-score 크기
+            confidence = abs(zscore)
+
+            # 거래량 이상치 동반 시 신뢰도 증폭
+            if volume_boost and vol_std > 0 and "Volume" in row.index:
+                vol = row["Volume"]
+                if not pd.isna(vol) and vol > 0:
+                    vol_z = (vol - vol_mean) / vol_std
+                    if vol_z > 2.0:
+                        confidence *= 1.5
+
+            anomaly_date = ts.date() if hasattr(ts, "date") else ts
+            anomalies.append({
+                "ticker":             ticker,
+                "date":               anomaly_date,
+                "bar_timestamp":      ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+                "return_pct":         round(ret, 2),
+                "zscore":             round(zscore, 2),
+                "confidence":         round(confidence, 2),
+                "close_price":        round(row["Close"], 2),
+                "volume":             int(row["Volume"]) if "Volume" in row.index else 0,
+                "direction":          "급등" if ret > 0 else "급락",
+                "is_recent":          (today - anomaly_date).days <= 5,
+                "adaptive_threshold": round(hist_mean + zscore_threshold * hist_std, 2),
+            })
+
+    # 신뢰도 내림차순 정렬 (같으면 날짜 내림차순)
+    anomalies.sort(key=lambda x: (x["date"], x["confidence"]), reverse=True)
+    return anomalies
+
+
 def classify_event_type(
     anomalies: list[dict],
     categories: dict,

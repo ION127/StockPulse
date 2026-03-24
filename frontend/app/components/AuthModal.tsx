@@ -8,14 +8,17 @@ interface Props {
   onClose: () => void
 }
 
-function friendlyError(message: string, mode: 'login' | 'register'): string {
+function friendlyError(message: string, mode: 'login' | 'register' | 'register_login'): string {
   if (message.includes('이미 사용 중인 이메일')) return '이미 가입된 이메일입니다. 로그인해 주세요.'
   if (message.includes('이메일 또는 비밀번호')) return '이메일 또는 비밀번호가 올바르지 않습니다.'
   if (message.includes('8자')) return '비밀번호는 8자 이상이어야 합니다.'
   if (message.includes('영문자')) return '비밀번호에 영문자를 포함해야 합니다.'
   if (message.includes('숫자')) return '비밀번호에 숫자를 포함해야 합니다.'
+  if (message.includes('72')) return '비밀번호가 너무 깁니다. 짧게 줄여주세요.'
   if (message.includes('429')) return '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.'
   if (message.includes('Failed to fetch') || message.includes('NetworkError')) return '네트워크 연결을 확인해 주세요.'
+  if (message.includes('500') || message.includes('Internal Server Error')) return '서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+  if (mode === 'register_login') return '회원가입은 완료됐으나 로그인에 실패했습니다. 직접 로그인해 주세요.'
   return mode === 'login' ? '로그인에 실패했습니다.' : '회원가입에 실패했습니다.'
 }
 
@@ -37,7 +40,14 @@ export default function AuthModal({ onClose }: Props) {
       if (mode === 'register') {
         await api.register(email, password)
       }
+    } catch (err: unknown) {
+      const raw = err instanceof Error ? err.message : '오류가 발생했습니다'
+      setError(friendlyError(raw, 'register'))
+      setLoading(false)
+      return
+    }
 
+    try {
       const { access_token, refresh_token } = await api.login(email, password)
       setTokens(access_token, refresh_token)
 
@@ -47,7 +57,7 @@ export default function AuthModal({ onClose }: Props) {
       onClose()
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : '오류가 발생했습니다'
-      setError(friendlyError(raw, mode))
+      setError(friendlyError(raw, mode === 'register' ? 'register_login' : 'login'))
     } finally {
       setLoading(false)
     }

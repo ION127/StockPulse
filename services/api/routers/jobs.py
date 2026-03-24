@@ -14,6 +14,7 @@ from db.connection import AsyncSessionLocal
 from db.models import Anomaly, AnalysisResult
 from schemas.anomaly import JobResponse
 from services.pipeline import run_pipeline
+from services.weekly_report import run_weekly_report, run_monthly_report
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/analyze", tags=["Jobs"])
@@ -180,3 +181,19 @@ async def _run_reanalyze_job(job_id: str, days: int, min_length: int):
     except Exception as e:
         _jobs[job_id].update({"status": "failed", "completed_at": datetime.now(), "message": str(e)})
         logger.error(f"재분석 잡 실패 {job_id}: {e}")
+
+
+# ── 주간/월간 리포트 수동 트리거 ────────────────────────────────────────────────
+
+@router.post("/report/weekly", tags=["Jobs"])
+async def trigger_weekly_report(background_tasks: BackgroundTasks):
+    """주간 패턴 리포트 즉시 생성 및 Slack 발송."""
+    background_tasks.add_task(run_weekly_report)
+    return {"message": "주간 리포트 생성 시작"}
+
+
+@router.post("/report/monthly", tags=["Jobs"])
+async def trigger_monthly_report(background_tasks: BackgroundTasks):
+    """월간 패턴 리포트 즉시 생성 및 Slack 발송."""
+    background_tasks.add_task(run_monthly_report)
+    return {"message": "월간 리포트 생성 시작"}

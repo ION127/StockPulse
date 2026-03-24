@@ -1,3 +1,6 @@
+# ── 시스템 ───────────────────────────────────
+tzdata>=2024.1          # zoneinfo 타임존 데이터 (Docker slim 이미지 대응)
+
 # ── 데이터 수집 ───────────────────────────────
 yfinance>=0.2.36
 pykrx>=1.0.45
@@ -25,6 +28,7 @@ confluent-kafka>=2.4.0
 
 # ── Phase 4: Prometheus 계측 ──────────────────
 prometheus-fastapi-instrumentator>=6.1.0
+prometheus-client>=0.20.0
 
 # ── Phase 6: 인증 (JWT + 비밀번호 해싱) ──────────────────
 python-jose[cryptography]>=3.3.0

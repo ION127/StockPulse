@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.connection import Base
 
 
+
 class Anomaly(Base):
     __tablename__ = "anomalies"
     __table_args__ = (
@@ -104,3 +105,40 @@ class AlertSetting(Base):
     quiet_end:      Mapped[Optional[int]] = mapped_column(Integer)  # 8  (08:00)
 
     user: Mapped["User"] = relationship(back_populates="alert_settings")
+
+
+# ── Signal Performance Tracker ────────────────────────────────────────────────
+
+class SignalPerformance(Base):
+    """
+    이상감지 시그널 성과 추적 테이블.
+    anomaly 감지 후 1시간 / 24시간 / 7일 뒤 가격을 조회해 수익률을 기록.
+    """
+    __tablename__ = "signal_performance"
+    __table_args__ = (
+        Index("idx_sp_ticker",     "ticker"),
+        Index("idx_sp_anomaly_id", "anomaly_id"),
+    )
+
+    id:             Mapped[int]            = mapped_column(Integer, primary_key=True, autoincrement=True)
+    anomaly_id:     Mapped[int]            = mapped_column(Integer, ForeignKey("anomalies.id"), unique=True)
+    ticker:         Mapped[str]            = mapped_column(String(20), nullable=False)
+    direction:      Mapped[str]            = mapped_column(String(10), nullable=False)   # '급등'/'급락'
+    detected_price: Mapped[Optional[float]] = mapped_column(Float)
+
+    # 측정 예정 시각 (스케줄러가 이 시각이 지나면 가격을 조회)
+    measure_1h_at:  Mapped[datetime]       = mapped_column(DateTime(timezone=True), index=True)
+    measure_24h_at: Mapped[datetime]       = mapped_column(DateTime(timezone=True), index=True)
+    measure_1w_at:  Mapped[datetime]       = mapped_column(DateTime(timezone=True), index=True)
+
+    # 측정 결과 (NULL = 아직 미측정)
+    price_1h:       Mapped[Optional[float]] = mapped_column(Float)
+    price_24h:      Mapped[Optional[float]] = mapped_column(Float)
+    price_1w:       Mapped[Optional[float]] = mapped_column(Float)
+    return_1h:      Mapped[Optional[float]] = mapped_column(Float)   # % 수익률
+    return_24h:     Mapped[Optional[float]] = mapped_column(Float)
+    return_1w:      Mapped[Optional[float]] = mapped_column(Float)
+
+    created_at:     Mapped[datetime]       = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    anomaly: Mapped["Anomaly"] = relationship()

@@ -20,8 +20,10 @@ logging.basicConfig(
 )
 
 from db.connection import init_db, AsyncSessionLocal
-from routers import anomalies, sectors, jobs, stocks, auth, user
+from routers import anomalies, sectors, jobs, stocks, auth, user, performance
 from services.pipeline import run_pipeline
+from services.performance_tracker import run_performance_check
+from services.weekly_report import run_weekly_report, run_monthly_report
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +110,18 @@ async def _save_and_broadcast(data: dict, loop: asyncio.AbstractEventLoop):
                     data.get("news_en", []),
                     data.get("news_kr", []),
                 )
+            # 시그널 성과 추적 레코드 생성 (신규 anomaly인 경우에만)
+            if saved.detected_at:
+                try:
+                    await repo.create_signal_performance(
+                        anomaly_id=saved.id,
+                        ticker=saved.ticker,
+                        direction=saved.direction,
+                        detected_price=saved.close_price,
+                        detected_at=saved.detected_at,
+                    )
+                except Exception:
+                    pass  # 이미 존재하면 (UNIQUE constraint) 무시
 
         await ws_manager.broadcast({
             "type":       "anomaly",
@@ -181,8 +195,23 @@ async def lifespan(app: FastAPI):
             scheduled_analysis, "interval",
             minutes=interval, next_run_time=datetime.now(),
         )
+        # 성과 추적기: 5분마다 측정 대기 레코드 처리
+        scheduler.add_job(
+            run_performance_check, "interval",
+            minutes=5,
+        )
+        # 주간 리포트: 매주 월요일 09:00 KST (= 00:00 UTC)
+        scheduler.add_job(
+            run_weekly_report, "cron",
+            day_of_week="mon", hour=0, minute=0,
+        )
+        # 월간 리포트: 매월 1일 09:00 KST
+        scheduler.add_job(
+            run_monthly_report, "cron",
+            day=1, hour=0, minute=0,
+        )
         scheduler.start()
-        logger.info(f"스케줄러 시작: {interval}분마다")
+        logger.info(f"스케줄러 시작: 분석={interval}분마다, 성과추적=5분마다, 주간/월간리포트")
     except ImportError:
         logger.warning("apscheduler 없음")
 
@@ -247,6 +276,7 @@ app.include_router(anomalies.router)
 app.include_router(sectors.router)
 app.include_router(jobs.router)
 app.include_router(stocks.router)
+app.include_router(performance.router)
 
 # jobs 라우터에 ws_manager.broadcast 주입 (순환 임포트 없이)
 from routers.jobs import set_broadcast  # noqa: E402

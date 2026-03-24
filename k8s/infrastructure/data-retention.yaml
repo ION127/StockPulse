@@ -238,10 +238,11 @@ spec:
                   set -e
                   echo "[$(date)] 일간 유지보수 시작"
 
-                  psql -h timescaledb-service -U "$PGUSER" -d "$PGDATABASE" <<'SQL'
+                  PSQL="psql -h timescaledb-service -U $PGUSER -d $PGDATABASE"
 
-                  -- ── 보관 정책 미설정 테이블: 수동 DROP CHUNKS ──────────────
-                  -- (초기화 Job 실패 등으로 정책이 없을 경우 안전망)
+                  # ── 보관 정책 미설정 테이블: 수동 DROP CHUNKS ──────────────
+                  # (초기화 Job 실패 등으로 정책이 없을 경우 안전망)
+                  $PSQL <<'SQL'
                   DO $$
                   DECLARE
                     tbl TEXT;
@@ -253,30 +254,30 @@ spec:
                         ON  j.hypertable_name = h.hypertable_name
                         AND j.proc_name = 'policy_retention'
                       WHERE h.hypertable_schema = 'public'
-                        AND j.job_id IS NULL  -- 보관 정책 없는 테이블만
+                        AND j.job_id IS NULL
                     LOOP
-                      -- 90일 초과 청크 삭제 (안전한 기본값)
                       PERFORM drop_chunks(tbl::regclass, INTERVAL '90 days');
                       RAISE NOTICE '수동 청크 삭제(90일): %', tbl;
                     END LOOP;
                   END $$;
+                  SQL
 
-                  -- ── VACUUM ANALYZE: 통계 갱신 및 dead tuple 정리 ───────────
-                  DO $$
-                  DECLARE
-                    tbl TEXT;
-                  BEGIN
-                    FOR tbl IN
-                      SELECT hypertable_name
-                      FROM   timescaledb_information.hypertables
-                      WHERE  hypertable_schema = 'public'
-                    LOOP
-                      EXECUTE format('VACUUM ANALYZE %I', tbl);
-                      RAISE NOTICE 'VACUUM ANALYZE: %', tbl;
-                    END LOOP;
-                  END $$;
+                  # ── VACUUM ANALYZE: 트랜잭션 블록 밖에서 테이블별 개별 실행 ──
+                  # VACUUM은 DO $$ 블록(트랜잭션) 안에서 실행 불가
+                  echo "[$(date)] VACUUM ANALYZE 시작"
+                  $PSQL -t -c "
+                    SELECT hypertable_name
+                    FROM   timescaledb_information.hypertables
+                    WHERE  hypertable_schema = 'public'
+                  " | while read -r tbl; do
+                    tbl=$(echo "$tbl" | xargs)
+                    [ -z "$tbl" ] && continue
+                    echo "  VACUUM ANALYZE $tbl ..."
+                    $PSQL -c "VACUUM ANALYZE $tbl"
+                  done
 
-                  -- ── 디스크 사용량 보고 ──────────────────────────────────────
+                  # ── 디스크 사용량 보고 ──────────────────────────────────────
+                  $PSQL <<'SQL'
                   SELECT
                     hypertable_name                                      AS "테이블",
                     pg_size_pretty(before_compression_total_bytes)       AS "압축 전",
@@ -290,7 +291,6 @@ spec:
                   FROM   timescaledb_information.hypertable_compression_stats
                   ORDER  BY total_bytes DESC NULLS LAST;
 
-                  -- ── 청크 수 요약 ────────────────────────────────────────────
                   SELECT
                     hypertable_name                 AS "테이블",
                     COUNT(*)                        AS "청크 수",
@@ -299,7 +299,6 @@ spec:
                   FROM   timescaledb_information.chunks
                   GROUP  BY hypertable_name
                   ORDER  BY hypertable_name;
-
                   SQL
 
                   echo "[$(date)] 일간 유지보수 완료"

@@ -64,6 +64,51 @@ spec:
                   number: 8000
 
           # ─────────────────────────────────────────────
+          # 인증 경로 (/auth) - FastAPI 인증 엔드포인트
+          # /auth/login, /auth/register, /auth/refresh, /auth/me
+          # ─────────────────────────────────────────────
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: api-service
+                port:
+                  number: 8000
+
+          # ─────────────────────────────────────────────
+          # Prometheus 메트릭 경로 (/metrics) - FastAPI 계측
+          # ─────────────────────────────────────────────
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: api-service
+                port:
+                  number: 8000
+
+          # ─────────────────────────────────────────────
+          # Grafana 대시보드 (/grafana)
+          # ─────────────────────────────────────────────
+          - path: /grafana
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana-service
+                port:
+                  number: 3000
+
+          # ─────────────────────────────────────────────
+          # Prometheus UI (/prometheus)
+          # ─────────────────────────────────────────────
+          - path: /prometheus
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus-service
+                port:
+                  number: 9090
+
+          # ─────────────────────────────────────────────
           # 루트 경로 (/) - Next.js 프론트엔드 서버
           # ─────────────────────────────────────────────
           - path: /

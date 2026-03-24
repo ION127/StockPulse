@@ -158,21 +158,31 @@ spec:
           # ─────────────────────────────────────────────
           # 헬스체크
           # ─────────────────────────────────────────────
+          # startupProbe: 기동 완료 전까지 liveness/readiness를 차단
+          # __consumer_offsets 54개 파티션 로딩에 최대 10분 소요
+          # 30s + 20 × 30s = 최대 630초(10.5분) 허용
+          startupProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 20
+
           livenessProbe:
             tcpSocket:
               port: 9092
-            initialDelaySeconds: 60
+            # startupProbe 통과 후에만 동작
             periodSeconds: 30
             timeoutSeconds: 10
-            failureThreshold: 3
+            failureThreshold: 5
 
           readinessProbe:
             tcpSocket:
               port: 9092
-            initialDelaySeconds: 30
-            periodSeconds: 10
+            periodSeconds: 15
             timeoutSeconds: 10
-            failureThreshold: 3
+            failureThreshold: 5
 
           # ─────────────────────────────────────────────
           # 리소스 제한 설정
@@ -183,7 +193,7 @@ spec:
               memory: "384Mi"
             limits:
               cpu: "1000m"
-              memory: "768Mi"  # 힙 256m + JVM 오버헤드 고려
+              memory: "640Mi"  # 힙 256m + JVM 오버헤드 고려 (최적화: 768→640Mi)
 
           volumeMounts:
             - name: kafka-data

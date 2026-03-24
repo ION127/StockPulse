@@ -33,6 +33,7 @@ spec:
       - CreateNamespace=true     # 네임스페이스가 없으면 자동 생성
       - PrunePropagationPolicy=foreground  # 종속 리소스 먼저 삭제
       - PruneLast=true           # 동기화 완료 후 불필요 리소스 삭제
+      - ServerSideApply=true     # kubectl apply annotation 262KB 제한 우회
 
     # 재시도 설정 (일시적 오류 처리)
     retry:

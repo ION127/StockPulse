@@ -102,7 +102,7 @@ spec:
               memory: "512Mi"
             limits:
               cpu: "2000m"
-              memory: "2Gi"
+              memory: "1536Mi"
 
           volumeMounts:
             - name: timescaledb-data

@@ -30,6 +30,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 from confluent_kafka import Consumer, KafkaError, Producer
+from prometheus_client import Counter, start_http_server
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,7 +42,23 @@ KAFKA_BOOTSTRAP          = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 THRESHOLD_PCT            = float(os.getenv("ANOMALY_THRESHOLD_PERCENT", "1.5"))
 THRESHOLD_Z              = float(os.getenv("ANOMALY_ZSCORE_THRESHOLD", "3.0"))
 INTRADAY_RECENT_MINUTES  = int(os.getenv("INTRADAY_RECENT_MINUTES", "5"))
+USE_ADAPTIVE             = os.getenv("USE_ADAPTIVE_DETECTION", "false").lower() == "true"
 GROUP_ID                 = "anomaly-detector-group"
+
+# ── Prometheus 메트릭 ─────────────────────────────────────────────────────────
+ANOMALY_COUNTER = Counter(
+    "anomaly_detected_total",
+    "탐지된 이상값 총 건수",
+    ["event_type", "direction", "market"],
+)
+KAFKA_ERROR_COUNTER = Counter(
+    "anomaly_detector_kafka_errors_total",
+    "Kafka 오류 건수",
+)
+PROCESS_ERROR_COUNTER = Counter(
+    "anomaly_detector_process_errors_total",
+    "메시지 처리 오류 건수",
+)
 
 _running = True
 
@@ -83,6 +100,10 @@ def _delivery_report(err, msg):
 
 
 def main():
+    # Prometheus /metrics HTTP 서버 (백그라운드 스레드)
+    start_http_server(8001)
+    logger.info("[anomaly-detector] Prometheus metrics 서버 시작 — port 8001")
+
     logger.info(
         f"[anomaly-detector] 시작 | Kafka: {KAFKA_BOOTSTRAP} "
         f"| 임계값: {THRESHOLD_PCT}%, {THRESHOLD_Z}σ"
@@ -90,10 +111,13 @@ def main():
 
     try:
         from core.stock_categories import STOCK_CATEGORIES
-        from core.stock_fetcher import classify_event_type, detect_anomalies
+        from core.stock_fetcher import classify_event_type, detect_anomalies, detect_anomalies_adaptive
     except ImportError as e:
         logger.error(f"core 모듈 임포트 실패: {e}")
         sys.exit(1)
+
+    detect_fn = detect_anomalies_adaptive if USE_ADAPTIVE else detect_anomalies
+    logger.info(f"탐지 모드: {'적응형 (adaptive)' if USE_ADAPTIVE else '고정 임계값'}")
 
     consumer = Consumer({
         "bootstrap.servers": KAFKA_BOOTSTRAP,
@@ -118,6 +142,7 @@ def main():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
                     continue
                 logger.error(f"Kafka 오류: {msg.error()}")
+                KAFKA_ERROR_COUNTER.inc()
                 continue
 
             try:
@@ -132,7 +157,7 @@ def main():
                 stock_data = _restore_dataframes(stocks_raw)
                 logger.info(f"[{market.upper()}] {len(stock_data)}개 종목 이상값 탐지 중")
 
-                anomalies = detect_anomalies(stock_data, THRESHOLD_PCT, THRESHOLD_Z)
+                anomalies = detect_fn(stock_data, THRESHOLD_PCT, THRESHOLD_Z)
 
                 # 장중 모드: bar_timestamp 기준으로 최근 N분 이내만 처리
                 # 일별 모드: is_recent(5일 이내) 기준
@@ -164,8 +189,16 @@ def main():
                 producer.flush()
                 logger.info(f"anomaly.detected {len(classified)}건 발행")
 
+                for anomaly in classified:
+                    ANOMALY_COUNTER.labels(
+                        event_type=anomaly.get("event_type", "UNKNOWN"),
+                        direction=anomaly.get("direction", "UNKNOWN"),
+                        market=market,
+                    ).inc()
+
             except Exception as e:
                 logger.error(f"메시지 처리 오류: {e}", exc_info=True)
+                PROCESS_ERROR_COUNTER.inc()
 
     finally:
         consumer.close()
