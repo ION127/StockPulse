@@ -284,5 +284,6 @@ jobs:
           else
             git add k8s/
             git commit -m "ci: update image tags to ${SHORT_SHA} [skip ci]"
+            git pull --rebase origin main
             git push
           fi
