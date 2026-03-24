@@ -1,14 +1,13 @@
 """
-Gemini API를 사용한 주식 이상값 분석 모듈
+Groq API를 사용한 주식 이상값 분석 모듈
 영문/한국어 동시 분석 결과 제공
-무료 티어: gemini-2.0-flash (분당 15회, 하루 1,500회)
+무료 티어: llama-3.3-70b-versatile (분당 30회, 하루 14,400회)
 """
 
 import os
 import time
 import logging
-from google import genai
-from google.genai import types
+from groq import Groq
 
 logger = logging.getLogger(__name__)
 
@@ -22,23 +21,23 @@ _SYSTEM_INSTRUCTION = (
     "Format your response exactly as specified."
 )
 
-_client: genai.Client | None = None
+_client: Groq | None = None
 
 
-def _get_client() -> genai.Client:
+def _get_client() -> Groq:
     global _client
     if _client is None:
-        _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY", ""))
+        _client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
     return _client
 
 
-# 분당 10회 제한 → 호출 사이 최소 7초 간격
-_MIN_INTERVAL_SEC = 7
+# 분당 30회 제한 → 호출 사이 최소 2초 간격
+_MIN_INTERVAL_SEC = 2
 _last_call_time = 0.0
 
 
-def _call_gemini(prompt: str, max_tokens: int = 3000, retries: int = 3) -> str:
-    """Gemini API 호출 공통 함수 (속도 제한 + 자동 재시도)"""
+def _call_groq(prompt: str, max_tokens: int = 3000, retries: int = 3) -> str:
+    """Groq API 호출 공통 함수 (속도 제한 + 자동 재시도)"""
     global _last_call_time
 
     elapsed = time.time() - _last_call_time
@@ -48,32 +47,28 @@ def _call_gemini(prompt: str, max_tokens: int = 3000, retries: int = 3) -> str:
     for attempt in range(retries):
         try:
             _last_call_time = time.time()
-            response = _get_client().models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=_SYSTEM_INSTRUCTION,
-                    max_output_tokens=max_tokens,
-                ),
+            response = _get_client().chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": _SYSTEM_INSTRUCTION},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=max_tokens,
             )
-            return response.text
+            return response.choices[0].message.content
         except Exception as e:
             err = str(e)
             if "429" in err and attempt < retries - 1:
                 wait = 60
-                if "retry_delay" in err:
-                    try:
-                        import re
-                        m = re.search(r"seconds:\s*(\d+)", err)
-                        if m:
-                            wait = int(m.group(1)) + 5
-                    except Exception:
-                        pass
+                import re
+                m = re.search(r"try again in ([\d.]+)s", err)
+                if m:
+                    wait = int(float(m.group(1))) + 2
                 logger.warning(f"429 속도 제한 → {wait}초 후 재시도 ({attempt+1}/{retries})")
                 time.sleep(wait)
             else:
                 raise
-    raise RuntimeError("Gemini API 재시도 초과")
+    raise RuntimeError("Groq API 재시도 초과")
 
 
 _EVENT_FOCUS = {
@@ -158,7 +153,7 @@ Please provide your analysis in the following exact format:
 """
 
     try:
-        full_text = _call_gemini(prompt, max_tokens=3000)
+        full_text = _call_groq(prompt, max_tokens=3000)
 
         ko_part = ""
         en_part = ""
@@ -180,7 +175,7 @@ Please provide your analysis in the following exact format:
         return {"ko": ko_part, "en": en_part}
 
     except Exception as e:
-        logger.error(f"Gemini API 오류 ({ticker}): {e}")
+        logger.error(f"Groq API 오류 ({ticker}): {e}")
         return {
             "ko": f"분석 실패: {e}",
             "en": f"Analysis failed: {e}",
@@ -243,7 +238,7 @@ Respond in this exact format:
 """
 
     try:
-        full_text = _call_gemini(prompt, max_tokens=1200)
+        full_text = _call_groq(prompt, max_tokens=1200)
 
         ko_part = ""
         en_part = ""

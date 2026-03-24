@@ -93,9 +93,9 @@ def run_analysis(demo_mode: bool = False):
 
     print("\n[4/4] AI 분석 중 (Gemini API)...")
 
-    if demo_mode or not os.getenv("GEMINI_API_KEY"):
-        if not os.getenv("GEMINI_API_KEY"):
-            print("\n  GEMINI_API_KEY가 설정되지 않았습니다.")
+    if demo_mode or not os.getenv("GROQ_API_KEY"):
+        if not os.getenv("GROQ_API_KEY"):
+            print("\n  GROQ_API_KEY가 설정되지 않았습니다.")
         _print_summary_only(sector_anomalies)
         return
 

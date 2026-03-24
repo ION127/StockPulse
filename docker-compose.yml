@@ -95,7 +95,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://stock:stock1234@db:5432/stockdb
       REDIS_URL: redis://redis:6379
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
       NEWS_API_KEY: ${NEWS_API_KEY}
       ANOMALY_THRESHOLD_PERCENT: ${ANOMALY_THRESHOLD_PERCENT:-8.0}
       ANOMALY_ZSCORE_THRESHOLD: ${ANOMALY_ZSCORE_THRESHOLD:-3.0}
@@ -197,7 +197,7 @@ services:
     restart: unless-stopped
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
     depends_on:
       kafka:
         condition: service_healthy

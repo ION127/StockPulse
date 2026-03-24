@@ -62,7 +62,7 @@ mkdir -p "$OUTPUT_DIR"
 KUBESEAL_OPTS="--controller-namespace $CONTROLLER_NS --controller-name $CONTROLLER_NAME --format yaml"
 
 # ── 필수 변수 확인 ──────────────────────────────────────────
-required_vars=(GEMINI_API_KEY NEWS_API_KEY KIS_APP_KEY KIS_APP_SECRET HARBOR_URL HARBOR_USER HARBOR_PASSWORD JWT_SECRET)
+required_vars=(GROQ_API_KEY NEWS_API_KEY KIS_APP_KEY KIS_APP_SECRET HARBOR_URL HARBOR_USER HARBOR_PASSWORD JWT_SECRET)
 for var in "${required_vars[@]}"; do
   if [ -z "${!var:-}" ]; then
     warn "$var 가 .env에 없습니다. 해당 Secret은 건너뜁니다."
@@ -70,11 +70,11 @@ for var in "${required_vars[@]}"; do
 done
 
 # ── 1. stock-api-secrets ────────────────────────────────────
-if [ -n "${GEMINI_API_KEY:-}" ] && [ -n "${NEWS_API_KEY:-}" ]; then
+if [ -n "${GROQ_API_KEY:-}" ] && [ -n "${NEWS_API_KEY:-}" ]; then
   info "stock-api-secrets 생성 중..."
   kubectl create secret generic stock-api-secrets \
     -n "$NAMESPACE" \
-    --from-literal=GEMINI_API_KEY="${GEMINI_API_KEY}" \
+    --from-literal=GROQ_API_KEY="${GROQ_API_KEY}" \
     --from-literal=NEWS_API_KEY="${NEWS_API_KEY}" \
     --dry-run=client -o yaml \
     | kubeseal $KUBESEAL_OPTS > "$OUTPUT_DIR/stock-api-secrets.yaml"

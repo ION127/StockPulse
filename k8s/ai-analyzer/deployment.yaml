@@ -45,7 +45,7 @@ spec:
             # 공통 설정
             - configMapRef:
                 name: stock-config
-            # GEMINI_API_KEY 주입 (stock-api-secrets에 포함)
+            # GROQ_API_KEY 주입 (stock-api-secrets에 포함)
             - secretRef:
                 name: stock-api-secrets
 

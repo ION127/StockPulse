@@ -3,8 +3,8 @@ AI Analyzer 서비스 — Phase 3
 
 역할:
   - Kafka Topic 'news.fetched' 구독
-  - Gemini 1.5 Flash로 한/영 이상값 원인 분석 (무료 1,500 RPD)
-  - Gemini Rate Limit 대응: 분당 15회 제한 → 7초 간격 자동 조절
+  - Groq llama-3.3-70b-versatile로 한/영 이상값 원인 분석 (무료 14,400 RPD)
+  - Groq Rate Limit 대응: 분당 30회 제한 → 2초 간격 자동 조절
   - Kafka Topic 'analysis.completed'에 발행
 
 메시지 형식 (analysis.completed):
@@ -31,7 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger("ai-analyzer")
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROUP_ID = "ai-analyzer-group"
 
 _running = True
@@ -53,12 +53,12 @@ def _delivery_report(err, msg):
 
 
 def main():
-    if not GEMINI_API_KEY:
-        logger.warning("GEMINI_API_KEY 미설정 — 분석 결과는 오류 메시지로 대체됩니다")
+    if not GROQ_API_KEY:
+        logger.warning("GROQ_API_KEY 미설정 — 분석 결과는 오류 메시지로 대체됩니다")
 
     logger.info(
         f"[ai-analyzer] 시작 | Kafka: {KAFKA_BOOTSTRAP} "
-        f"| Gemini: {'설정됨' if GEMINI_API_KEY else '미설정'}"
+        f"| Groq: {'설정됨' if GROQ_API_KEY else '미설정'}"
     )
 
     try:
