@@ -81,7 +81,7 @@ spec:
 
               -- ── 압축 정책: 1일 이상 된 청크 자동 압축 ─────────────────────
               -- hypertable이 존재할 때만 적용 (없으면 SKIP)
-              DO $$
+              DO $func$
               DECLARE
                 tbl TEXT;
               BEGIN
@@ -103,11 +103,11 @@ spec:
                     RAISE NOTICE '압축 정책 SKIP (% : %)', tbl, SQLERRM;
                   END;
                 END LOOP;
-              END $$;
+              END $func$;
 
               -- ── 보관 기간 정책 ──────────────────────────────────────────────
               -- stock_prices 관련 테이블 (시세): 30일 보관
-              DO $$
+              DO $func$
               DECLARE
                 tbl TEXT;
               BEGIN
@@ -124,10 +124,10 @@ spec:
                           if_not_exists => true);
                   RAISE NOTICE '시세 보관 정책(30일) 적용: %', tbl;
                 END LOOP;
-              END $$;
+              END $func$;
 
               -- 뉴스/AI 분석 테이블: 90일 보관
-              DO $$
+              DO $func$
               DECLARE
                 tbl TEXT;
               BEGIN
@@ -144,7 +144,7 @@ spec:
                           if_not_exists => true);
                   RAISE NOTICE '뉴스/AI 보관 정책(90일) 적용: %', tbl;
                 END LOOP;
-              END $$;
+              END $func$;
 
               -- ── 현재 등록된 정책 확인 ──────────────────────────────────────
               SELECT application_name, schedule_interval, config
@@ -243,7 +243,7 @@ spec:
                   # ── 보관 정책 미설정 테이블: 수동 DROP CHUNKS ──────────────
                   # (초기화 Job 실패 등으로 정책이 없을 경우 안전망)
                   $PSQL <<'SQL'
-                  DO $$
+                  DO $func$
                   DECLARE
                     tbl TEXT;
                   BEGIN
@@ -259,7 +259,7 @@ spec:
                       PERFORM drop_chunks(tbl::regclass, INTERVAL '90 days');
                       RAISE NOTICE '수동 청크 삭제(90일): %', tbl;
                     END LOOP;
-                  END $$;
+                  END $func$;
                   SQL
 
                   # ── VACUUM ANALYZE: 트랜잭션 블록 밖에서 테이블별 개별 실행 ──
@@ -279,17 +279,13 @@ spec:
                   # ── 디스크 사용량 보고 ──────────────────────────────────────
                   $PSQL <<'SQL'
                   SELECT
-                    hypertable_name                                      AS "테이블",
-                    pg_size_pretty(before_compression_total_bytes)       AS "압축 전",
-                    pg_size_pretty(after_compression_total_bytes)        AS "압축 후",
-                    ROUND(
-                      100.0 * (1 - after_compression_total_bytes::numeric
-                               / NULLIF(before_compression_total_bytes, 0)),
-                      1
-                    ) || '%'                                             AS "압축률",
-                    pg_size_pretty(total_bytes)                          AS "총 크기"
-                  FROM   timescaledb_information.hypertable_compression_stats
-                  ORDER  BY total_bytes DESC NULLS LAST;
+                    h.hypertable_name                                    AS "테이블",
+                    pg_size_pretty(h.disk_size)                         AS "총 크기",
+                    h.num_chunks                                         AS "청크 수",
+                    h.compression_enabled                                AS "압축 활성화"
+                  FROM   timescaledb_information.hypertables h
+                  WHERE  h.hypertable_schema = 'public'
+                  ORDER  BY h.disk_size DESC NULLS LAST;
 
                   SELECT
                     hypertable_name                 AS "테이블",
