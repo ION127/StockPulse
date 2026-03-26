@@ -9,6 +9,8 @@ import logging
 import os
 from typing import Optional
 
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 DART_API_KEY = os.getenv("DART_API_KEY", "")
@@ -42,7 +44,6 @@ def get_financial_ratios(ticker: str) -> dict:
         return {}
 
     try:
-        import pandas as pd
 
         clean = ticker.replace("KR:", "").replace(".KS", "").replace(".KQ", "")
         corp_code = dart.find_corp_code(clean)
@@ -193,7 +194,6 @@ def get_disclosure_events(ticker: str, days_back: int = 90) -> pd.DataFrame:
         return pd.DataFrame()
 
     try:
-        import pandas as pd
         from datetime import datetime, timedelta
 
         clean = ticker.replace("KR:", "").replace(".KS", "").replace(".KQ", "")
@@ -267,7 +267,6 @@ def get_financial_ratios_with_lag(ticker: str) -> dict:
     Returns:
         dict with keys: data (재무비율), available_from (이 날짜 이후에만 사용 가능)
     """
-    import pandas as pd
     from datetime import datetime, timedelta
 
     ratios = get_financial_ratios(ticker)
