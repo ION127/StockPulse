@@ -49,5 +49,5 @@ joblib>=1.3.0            # 모델 직렬화
 optuna>=3.6.0            # 하이퍼파라미터 자동 튜닝
 
 # ── 추가 데이터 수집 ──────────────────────────────────────────────────────
-OpenDartReader>=0.7.14   # DART 재무제표 (선택, DART_API_KEY 필요)
+OpenDartReader>=0.2.3   # DART 재무제표 (선택, DART_API_KEY 필요)
 pytrends>=4.9.2          # Google Trends 검색량
