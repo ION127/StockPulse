@@ -51,3 +51,4 @@ optuna>=3.6.0            # 하이퍼파라미터 자동 튜닝
 # ── 추가 데이터 수집 ──────────────────────────────────────────────────────
 OpenDartReader>=0.2.3   # DART 재무제표 (선택, DART_API_KEY 필요)
 pytrends>=4.9.2          # Google Trends 검색량
+urllib3>=1.26.0,<2.0     # pytrends method_whitelist 호환성
