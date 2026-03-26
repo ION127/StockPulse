@@ -305,13 +305,13 @@ def train(
     logger.info(f"[ML] {ticker} CV → Acc={cv_acc:.4f} AUC={cv_auc:.4f} (±{np.std(acc_scores):.4f})")
 
     # ── 전체 데이터로 최종 모델 학습 ─────────────────────────────────────
-    final_lgb = lgb.LGBMClassifier(**lgb_params, n_estimators=500)
+    final_lgb = lgb.LGBMClassifier(**{**lgb_params, "n_estimators": 500})
     final_lgb.fit(X, y, callbacks=[lgb.log_evaluation(-1)])
 
-    final_xgb = XGBClassifier(**xgb_params, n_estimators=500)
+    final_xgb = XGBClassifier(**{**xgb_params, "n_estimators": 500})
     final_xgb.fit(X, y, verbose=False)
 
-    final_cat = CatBoostClassifier(**cat_params, iterations=500)
+    final_cat = CatBoostClassifier(**{**cat_params, "iterations": 500})
     final_cat.fit(X, y, verbose=False)
 
     # 피처 중요도 (LGB gain 기준)
