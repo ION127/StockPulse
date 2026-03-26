@@ -278,9 +278,8 @@ def train(
         p_lgb = m_lgb.predict_proba(X_val)[:, 1]
 
         # XGB
-        m_xgb = XGBClassifier(**xgb_params)
-        m_xgb.fit(X_tr, y_tr, eval_set=[(X_val, y_val)],
-                  verbose=False, early_stopping_rounds=30)
+        m_xgb = XGBClassifier(**xgb_params, early_stopping_rounds=30)
+        m_xgb.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], verbose=False)
         p_xgb = m_xgb.predict_proba(X_val)[:, 1]
 
         # CatBoost

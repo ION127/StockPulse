@@ -22,7 +22,7 @@ def _get_dart():
         return None
     try:
         import OpenDartReader
-        return OpenDartReader.OpenDartReader(DART_API_KEY)
+        return OpenDartReader(DART_API_KEY)
     except ImportError:
         logger.debug("[DART] OpenDartReader 미설치")
         return None
