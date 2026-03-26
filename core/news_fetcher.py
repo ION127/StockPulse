@@ -11,6 +11,7 @@ import feedparser
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
+from urllib.parse import quote_plus
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ def fetch_english_news(
 
     # Google News RSS (API 없어도 동작)
     if len(articles) < max_articles:
-        query = "+".join(keywords[:3])
+        query = "+".join(quote_plus(kw) for kw in keywords[:3])
         rss_url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
         try:
             feed = feedparser.parse(rss_url)
@@ -113,7 +114,7 @@ def fetch_korean_news(
 
     # Google News 한국어 버전 보조
     if len(articles) < max_articles:
-        query = "+".join(keywords[:2])
+        query = "+".join(quote_plus(kw) for kw in keywords[:2])
         rss_url = f"https://news.google.com/rss/search?q={query}&hl=ko&gl=KR&ceid=KR:ko"
         try:
             feed = feedparser.parse(rss_url)
