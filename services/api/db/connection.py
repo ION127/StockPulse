@@ -38,7 +38,10 @@ async def init_db(max_retries: int = 10, retry_interval: float = 3.0):
     DB가 아직 준비되지 않은 경우 최대 max_retries회 재시도합니다.
     """
     import asyncio
-    from db.models import Anomaly, AnalysisResult, User, Watchlist, Portfolio, AlertSetting  # noqa: F401
+    from db.models import (  # noqa: F401
+            Anomaly, AnalysisResult, User, Watchlist, Portfolio, AlertSetting,
+            SignalPerformance, StockPrediction, MLModelPerformance,
+        )
 
     for attempt in range(1, max_retries + 1):
         try:

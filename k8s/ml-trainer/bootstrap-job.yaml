@@ -1,0 +1,144 @@
+---
+# ════════════════════════════════════════════════════════════════════════════
+# ML 모델 최초 학습 Job (Bootstrap)
+#
+# 목적: CronJob이 처음 실행되기 전에 과거 2년 데이터로 모델을 미리 학습
+#
+# 실행 방법:
+#   kubectl apply -f k8s/ml-trainer/bootstrap-job.yaml
+#   kubectl logs -f job/ml-bootstrap -n stock -c ml-trainer
+#
+# 완료 확인:
+#   kubectl get job ml-bootstrap -n stock
+#   kubectl describe job ml-bootstrap -n stock
+#
+# 완료 후 삭제 (선택):
+#   kubectl delete job ml-bootstrap -n stock
+#
+# 소요 시간: 약 30분 ~ 2시간 (종목 수 × 데이터 수집 + 학습)
+# ════════════════════════════════════════════════════════════════════════════
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ml-bootstrap
+  namespace: stock
+  labels:
+    app: ml-trainer
+    job-type: bootstrap
+    app.kubernetes.io/component: ml
+    app.kubernetes.io/part-of: stock-platform
+spec:
+  # 실패 시 1회 재시도
+  backoffLimit: 1
+  # 최대 4시간 (Optuna 포함 2년치 데이터 학습)
+  activeDeadlineSeconds: 14400
+  template:
+    metadata:
+      labels:
+        app: ml-trainer
+        job-type: bootstrap
+    spec:
+      restartPolicy: OnFailure
+
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-tier
+                    operator: In
+                    values:
+                      - heavy
+
+      imagePullSecrets:
+        - name: harbor-pull-secret
+
+      # TimescaleDB 준비 대기
+      initContainers:
+        - name: wait-for-db
+          image: postgres:15-alpine
+          command:
+            - sh
+            - -c
+            - |
+              echo "TimescaleDB 준비 대기 중..."
+              until pg_isready -h timescaledb-service -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do
+                echo "DB 아직 준비 안 됨, 5초 후 재시도..."
+                sleep 5
+              done
+              echo "DB 준비 완료!"
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: stock-db-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: stock-db-secret
+                  key: POSTGRES_DB
+
+      containers:
+        - name: ml-trainer
+          image: 10.0.2.105/stock/ml-trainer:latest
+          imagePullPolicy: Always
+
+          env:
+            # ── DB 연결 ───────────────────────────────────────────────────
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: stock-db-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: stock-db-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: stock-db-secret
+                  key: POSTGRES_DB
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@timescaledb-service:5432/$(POSTGRES_DB)"
+
+            # ── ML 설정 ───────────────────────────────────────────────────
+            - name: MODEL_DIR
+              value: "/app/models"
+            - name: ML_RETRAIN_THRESHOLD
+              value: "0.52"
+            # 2년치 데이터로 초기 학습 (일간 CronJob은 1년)
+            - name: ML_DAYS_BACK
+              value: "730"
+            # weekly 모드: Optuna 튜닝 + Walk-forward 검증 포함
+            # (최초 학습이므로 최고 품질 모델 생성)
+            - name: ML_RUN_MODE
+              value: "weekly"
+
+          envFrom:
+            - configMapRef:
+                name: stock-config
+            - secretRef:
+                name: stock-api-secrets   # DART_API_KEY, BOK_API_KEY 포함
+
+          volumeMounts:
+            - name: models
+              mountPath: /app/models
+
+          # 초기 학습은 자원 넉넉하게
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "4Gi"
+            limits:
+              cpu: "4000m"
+              memory: "8Gi"
+
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: ml-models-pvc

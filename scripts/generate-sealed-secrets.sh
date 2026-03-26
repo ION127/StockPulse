@@ -72,13 +72,24 @@ done
 # ── 1. stock-api-secrets ────────────────────────────────────
 if [ -n "${GROQ_API_KEY:-}" ] && [ -n "${NEWS_API_KEY:-}" ]; then
   info "stock-api-secrets 생성 중..."
+
+  # 선택적 키 (있으면 포함, 없으면 빈 값으로 포함 — 서비스가 빈 값 처리)
+  DART_LITERAL=""
+  BOK_LITERAL=""
+  [ -n "${DART_API_KEY:-}" ] && DART_LITERAL="--from-literal=DART_API_KEY=${DART_API_KEY}"
+  [ -n "${BOK_API_KEY:-}"  ] && BOK_LITERAL="--from-literal=BOK_API_KEY=${BOK_API_KEY}"
+
   kubectl create secret generic stock-api-secrets \
     -n "$NAMESPACE" \
     --from-literal=GROQ_API_KEY="${GROQ_API_KEY}" \
     --from-literal=NEWS_API_KEY="${NEWS_API_KEY}" \
+    ${DART_LITERAL} \
+    ${BOK_LITERAL} \
     --dry-run=client -o yaml \
     | kubeseal $KUBESEAL_OPTS > "$OUTPUT_DIR/stock-api-secrets.yaml"
   info "  → $OUTPUT_DIR/stock-api-secrets.yaml"
+  [ -z "${DART_API_KEY:-}" ] && warn "  DART_API_KEY 없음 — 재무/공시 데이터 비활성"
+  [ -z "${BOK_API_KEY:-}"  ] && warn "  BOK_API_KEY 없음 — 기준금리/투자자예탁금 비활성"
 fi
 
 # ── 2. stock-db-secret ─────────────────────────────────────

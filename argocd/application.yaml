@@ -70,3 +70,11 @@ spec:
         - .spec.volumeClaimTemplates[].spec.volumeMode
         - .spec.volumeClaimTemplates[].spec.storageClassName
         - .spec.volumeClaimTemplates[].status
+    # CronJob: K8s가 자동으로 추가하는 lastScheduleTime, active 필드 무시
+    - group: batch
+      kind: CronJob
+      namespace: stock
+      jqPathExpressions:
+        - .status.lastScheduleTime
+        - .status.lastSuccessfulTime
+        - .status.active

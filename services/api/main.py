@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 
 from db.connection import init_db, AsyncSessionLocal
-from routers import anomalies, sectors, jobs, stocks, auth, user, performance
+from routers import anomalies, sectors, jobs, stocks, auth, user, performance, predictions
 from services.pipeline import run_pipeline
 from services.performance_tracker import run_performance_check
 from services.weekly_report import run_weekly_report, run_monthly_report
@@ -277,6 +277,7 @@ app.include_router(sectors.router)
 app.include_router(jobs.router)
 app.include_router(stocks.router)
 app.include_router(performance.router)
+app.include_router(predictions.router)
 
 # jobs 라우터에 ws_manager.broadcast 주입 (순환 임포트 없이)
 from routers.jobs import set_broadcast  # noqa: E402

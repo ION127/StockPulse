@@ -1,4 +1,4 @@
-import type { Anomaly, Analysis, SectorTrend, JobResponse, Candle } from '@/types'
+import type { Anomaly, Analysis, SectorTrend, JobResponse, Candle, Prediction, ModelPerformance } from '@/types'
 
 // SSR(서버): k8s 내부 DNS로 직접 접근
 // CSR(브라우저): 상대 경로 → Ingress가 /api 를 api-service:8000으로 라우팅
@@ -168,5 +168,26 @@ export const api = {
 
   removePortfolio(ticker: string) {
     return authFetch<void>(`/api/v1/users/portfolio/${ticker}`, { method: 'DELETE' })
+  },
+
+  // ── ML 예측 ──────────────────────────────────────────────────────────
+  getPredictions(params?: { ticker?: string; days?: number }) {
+    const q = new URLSearchParams()
+    if (params?.ticker) q.set('ticker', params.ticker)
+    if (params?.days) q.set('days', String(params.days))
+    return get<Prediction[]>(`/api/v1/predictions?${q}`)
+  },
+
+  getLatestPrediction(ticker: string) {
+    return get<Prediction>(`/api/v1/predictions/${encodeURIComponent(ticker)}/latest`)
+  },
+
+  getModelPerformance(ticker: string, days = 30) {
+    return get<ModelPerformance[]>(`/api/v1/predictions/${encodeURIComponent(ticker)}/performance?days=${days}`)
+  },
+
+  triggerTrain(ticker: string) {
+    return fetch(`${BASE}/api/v1/predictions/${encodeURIComponent(ticker)}/train`, { method: 'POST' })
+      .then(r => r.json() as Promise<{ message: string; ticker: string }>)
   },
 }

@@ -142,3 +142,47 @@ class SignalPerformance(Base):
     created_at:     Mapped[datetime]       = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     anomaly: Mapped["Anomaly"] = relationship()
+
+
+# ── ML 예측 ────────────────────────────────────────────────────────────────
+
+class StockPrediction(Base):
+    """ML 모델의 종목별 다음날 방향성 예측 결과"""
+    __tablename__ = "stock_predictions"
+    __table_args__ = (
+        Index("idx_pred_ticker_date", "ticker", "prediction_date"),
+        Index("idx_pred_date",        "prediction_date"),
+    )
+
+    id:               Mapped[int]             = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker:           Mapped[str]             = mapped_column(String(20), nullable=False)
+    prediction_date:  Mapped[date]            = mapped_column(Date, nullable=False)  # 예측 대상 날짜
+    predicted_at:     Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now())
+    direction:        Mapped[str]             = mapped_column(String(10), nullable=False)  # 상승/하락
+    up_prob:          Mapped[float]           = mapped_column(Float, nullable=False)       # 상승 확률 0-100
+    confidence:       Mapped[float]           = mapped_column(Float)                       # 신뢰도 0-100
+    cv_accuracy:      Mapped[Optional[float]] = mapped_column(Float)
+    shap_top5:        Mapped[Optional[dict]]  = mapped_column(JSON)   # 상위 5 피처 기여도
+    model_version:    Mapped[Optional[str]]   = mapped_column(String(50))
+
+    # 사후 검증
+    actual_direction: Mapped[Optional[str]]   = mapped_column(String(10))
+    actual_return:    Mapped[Optional[float]] = mapped_column(Float)
+    was_correct:      Mapped[Optional[bool]]  = mapped_column(Boolean)
+
+
+class MLModelPerformance(Base):
+    """ML 모델 롤링 정확도 추적"""
+    __tablename__ = "ml_model_performance"
+    __table_args__ = (
+        Index("idx_mlperf_ticker_date", "ticker", "eval_date"),
+    )
+
+    id:                Mapped[int]             = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker:            Mapped[str]             = mapped_column(String(20), nullable=False)
+    eval_date:         Mapped[date]            = mapped_column(Date, nullable=False)
+    accuracy_7d:       Mapped[Optional[float]] = mapped_column(Float)
+    accuracy_30d:      Mapped[Optional[float]] = mapped_column(Float)
+    sample_count:      Mapped[int]             = mapped_column(Integer, default=0)
+    retrain_triggered: Mapped[bool]            = mapped_column(Boolean, default=False)
+    created_at:        Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -22,6 +22,7 @@ jobs:
       ai_analyzer:      ${{ steps.check.outputs.ai_analyzer }}
       notifier:         ${{ steps.check.outputs.notifier }}
       frontend:         ${{ steps.check.outputs.frontend }}
+      ml_trainer:       ${{ steps.check.outputs.ml_trainer }}
 
     steps:
       - uses: actions/checkout@v5
@@ -34,7 +35,7 @@ jobs:
           # ── 수동 트리거: 모든 서비스 빌드 ──────────────────────────────────
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "수동 트리거 → 전체 빌드"
-            for svc in api stock_collector kis_bridge anomaly_detector news_fetcher ai_analyzer notifier frontend; do
+            for svc in api stock_collector kis_bridge anomaly_detector news_fetcher ai_analyzer notifier frontend ml_trainer; do
               echo "${svc}=true" >> $GITHUB_OUTPUT
             done
             exit 0
@@ -125,6 +126,15 @@ jobs:
 
           check_service "frontend"         \
             "^frontend/"
+
+          check_service "ml_trainer"       \
+            "^services/ml-trainer/"        \
+            "^core/feature_engineer\.py"   \
+            "^core/ml_predictor\.py"       \
+            "^core/llm_features\.py"       \
+            "^core/regime_detector\.py"    \
+            "^core/collectors/"            \
+            "^requirements\.txt$"
 
   # ── 2단계: 변경된 서비스만 빌드 & 푸시 ──────────────────────────────────────
   build-and-push:
@@ -232,6 +242,17 @@ jobs:
             ${{ secrets.HARBOR_URL }}/stock/notifier:${{ env.SHORT_SHA }}
             ${{ secrets.HARBOR_URL }}/stock/notifier:latest
 
+      - name: Build and push ml-trainer
+        if: needs.detect-changes.outputs.ml_trainer == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/ml-trainer/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.HARBOR_URL }}/stock/ml-trainer:${{ env.SHORT_SHA }}
+            ${{ secrets.HARBOR_URL }}/stock/ml-trainer:latest
+
       # ─────────────────────────────────────────────
       # 프론트엔드 (build context: ./frontend)
       # ─────────────────────────────────────────────
@@ -273,6 +294,15 @@ jobs:
           if [ "${{ needs.detect-changes.outputs.ai_analyzer }}"      = "true" ]; then update_manifest "ai-analyzer";      fi
           if [ "${{ needs.detect-changes.outputs.notifier }}"         = "true" ]; then update_manifest "notifier";         fi
           if [ "${{ needs.detect-changes.outputs.frontend }}"         = "true" ]; then update_manifest "frontend";         fi
+
+          # ml-trainer는 CronJob이라 cronjob.yaml 업데이트
+          if [ "${{ needs.detect-changes.outputs.ml_trainer }}" = "true" ]; then
+            MANIFEST="k8s/ml-trainer/cronjob.yaml"
+            if [ -f "$MANIFEST" ]; then
+              sed -i "s|${HARBOR}/stock/ml-trainer:[^ ]*|${HARBOR}/stock/ml-trainer:${SHORT_SHA}|g" "$MANIFEST"
+              echo "  ✓ ${MANIFEST} → ${SHORT_SHA}"
+            fi
+          fi
 
       - name: Commit updated manifests
         run: |

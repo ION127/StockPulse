@@ -60,6 +60,31 @@ export interface Candle {
   volume: number
 }
 
+export interface Prediction {
+  id: number
+  ticker: string
+  prediction_date: string
+  predicted_at: string
+  direction: string       // "상승" | "하락"
+  up_prob: number         // 0~100
+  confidence: number      // 0~100
+  cv_accuracy: number | null
+  shap_top5: Record<string, number> | null
+  model_version: string | null
+  actual_direction: string | null
+  actual_return: number | null
+  was_correct: boolean | null
+}
+
+export interface ModelPerformance {
+  ticker: string
+  eval_date: string
+  accuracy_7d: number | null
+  accuracy_30d: number | null
+  sample_count: number
+  retrain_triggered: boolean
+}
+
 export interface JobResponse {
   job_id: string
   status: 'queued' | 'running' | 'done' | 'failed'

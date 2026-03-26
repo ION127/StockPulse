@@ -11,6 +11,7 @@ import AnomalyList from './components/AnomalyList'
 import StockChart from './components/StockChart'
 import AnalysisPanel from './components/AnalysisPanel'
 import PortfolioPanel from './components/PortfolioPanel'
+import PredictionPanel from './components/PredictionPanel'
 
 interface Props {
   initialAnomalies: Anomaly[]
@@ -52,11 +53,16 @@ export default function DashboardClient({ initialAnomalies, initialSectorTrends,
             </div>
           </div>
 
-          {/* 하단 행: 주가 차트 + AI 분석 패널 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <StockChart />
+          {/* 하단 행: 주가 차트 + AI 분석 + ML 예측 */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-1">
+              <StockChart />
+            </div>
             <div className="min-h-[240px]">
               <AnalysisPanel />
+            </div>
+            <div className="min-h-[240px]">
+              <PredictionPanel />
             </div>
           </div>
         </main>
