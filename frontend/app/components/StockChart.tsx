@@ -42,21 +42,16 @@ function fmtTs(ts: string, isMinute: boolean): string {
   return isMinute ? `${hh}:${min}` : `${mm}/${dd}`
 }
 
-/** 이상값 ↔ 캔들 매칭
- *  분봉: bar_timestamp 분 단위 비교
- *  일봉: 날짜(YYYY-MM-DD) 비교 — 일봉 캔들은 항상 09:00 고정이므로 분 비교 불가
- */
-function matchAnomaly(anomaly: Anomaly, candleTs: string, isMinute: boolean): boolean {
-  if (isMinute) {
-    const bt = anomaly.bar_timestamp
-    if (!bt) return false
-    const norm = (s: string) => s.slice(0, 16).replace('T', ' ')
-    return norm(bt) === norm(candleTs)
-  } else {
-    const aDate = (anomaly.bar_timestamp ?? anomaly.anomaly_date ?? '').slice(0, 10)
-    const cDate = candleTs.slice(0, 10)
-    return aDate !== '' && aDate === cDate
-  }
+/** 이상값의 날짜 추출 (bar_timestamp 또는 anomaly_date) */
+function anomalyDate(a: Anomaly): string {
+  return (a.bar_timestamp ?? a.anomaly_date ?? '').slice(0, 10)
+}
+
+/** bar_timestamp가 분 단위 실제 시각인지 (일봉 감지는 자정 00:00) */
+function isMinuteLevelTs(bt: string | null | undefined): boolean {
+  if (!bt) return false
+  const time = bt.slice(11, 16)       // "HH:MM"
+  return time !== '' && time !== '00:00'
 }
 
 /**
@@ -213,9 +208,34 @@ export default function StockChart() {
   const isMinute  = timeframe === 'minute'
   const lastClose = rawCandles[rawCandles.length - 1]?.close ?? 0
 
+  // 분봉 차트에서 일봉 이상값을 해당 날짜의 마지막 캔들(종가)에 표시하기 위해
+  // 날짜별 마지막 캔들 타임스탬프를 미리 계산
+  const lastTsOfDate = new Map<string, string>()
+  for (const c of rawCandles) {
+    lastTsOfDate.set(c.timestamp.slice(0, 10), c.timestamp)
+  }
+
   const chartData: ChartPoint[] = downsample(
     rawCandles.map((c) => {
-      const anomaly    = anomalies.find((a) => matchAnomaly(a, c.timestamp, isMinute))
+      const cDate = c.timestamp.slice(0, 10)
+      const cNorm = c.timestamp.slice(0, 16).replace('T', ' ')
+
+      const anomaly = anomalies.find((a) => {
+        const aDate = anomalyDate(a)
+        if (isMinute) {
+          if (isMinuteLevelTs(a.bar_timestamp)) {
+            // 분 단위 이상값: 정확한 분 비교
+            return a.bar_timestamp!.slice(0, 16).replace('T', ' ') === cNorm
+          } else {
+            // 일봉 이상값: 해당 날짜의 마지막 캔들(종가봉)에 표시
+            return aDate !== '' && aDate === cDate && lastTsOfDate.get(cDate) === c.timestamp
+          }
+        } else {
+          // 일봉 차트: 날짜만 비교
+          return aDate !== '' && aDate === cDate
+        }
+      })
+
       const open  = c.open  ?? c.close
       const high  = c.high  ?? c.close
       const low   = c.low   ?? c.close

@@ -48,6 +48,7 @@ async def run_pipeline(db: AsyncSession, broadcast: Callable,
     for anomaly in classified:
         saved = await repo.save_anomaly({
             "ticker": anomaly["ticker"], "anomaly_date": anomaly["date"],
+            "bar_timestamp": anomaly.get("bar_timestamp"),
             "return_pct": anomaly["return_pct"], "zscore": anomaly.get("zscore"),
             "close_price": anomaly.get("close_price"), "volume": anomaly.get("volume"),
             "direction": anomaly["direction"], "event_type": anomaly.get("event_type", "INDIVIDUAL"),

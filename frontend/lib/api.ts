@@ -92,7 +92,7 @@ export const api = {
   },
 
   getTickerHistory(ticker: string, days = 30) {
-    return get<Anomaly[]>(`/api/v1/anomalies/${ticker}/history?days=${days}`)
+    return get<Anomaly[]>(`/api/v1/anomalies/${encodeURIComponent(ticker)}/history?days=${days}`)
   },
 
   getAnalysis(anomalyId: number) {
