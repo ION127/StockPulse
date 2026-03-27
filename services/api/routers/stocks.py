@@ -137,37 +137,74 @@ def _fetch_kr_minute_candles(ticker: str) -> list[dict]:
 
 
 def _fetch_kr_daily_candles(ticker: str, days: int) -> list[dict]:
-    """pykrx 일봉 데이터 (3D / 5D용)"""
+    """한국주식 일봉: pykrx 우선, 실패 시 yfinance fallback"""
+    # 1) pykrx 시도
     try:
         from pykrx import stock as krx
         end   = datetime.now().strftime("%Y%m%d")
-        start = (datetime.now() - timedelta(days=days * 2 + 10)).strftime("%Y%m%d")
+        start = (datetime.now() - timedelta(days=days * 2 + 30)).strftime("%Y%m%d")
         df = krx.get_market_ohlcv_by_date(start, end, ticker)
-        if df.empty:
-            return []
-        df = df.iloc[:, :5]
-        df.columns = ["Open", "High", "Low", "Close", "Volume"]
-        df = df.tail(days)
-        return [
-            {
-                "timestamp": str(idx.date()) + "T09:00:00",
-                "open":   round(float(row["Open"]),  2),
-                "high":   round(float(row["High"]),  2),
-                "low":    round(float(row["Low"]),   2),
-                "close":  round(float(row["Close"]), 2),
-                "volume": int(row["Volume"]),
-            }
-            for idx, row in df.iterrows()
-        ]
+        if not df.empty:
+            df = df.iloc[:, :5]
+            df.columns = ["Open", "High", "Low", "Close", "Volume"]
+            df = df.tail(days)
+            return [
+                {
+                    "timestamp": str(idx.date()) + "T09:00:00",
+                    "open":   round(float(row["Open"]),  2),
+                    "high":   round(float(row["High"]),  2),
+                    "low":    round(float(row["Low"]),   2),
+                    "close":  round(float(row["Close"]), 2),
+                    "volume": int(row["Volume"]),
+                }
+                for idx, row in df.iterrows()
+            ]
     except Exception:
-        return []
+        pass
+
+    # 2) yfinance fallback (.KS / .KQ)
+    try:
+        import yfinance as yf
+        import pandas as pd
+        for suffix in [".KS", ".KQ"]:
+            try:
+                df = yf.download(
+                    ticker + suffix,
+                    period=f"{min(days * 2, 730)}d",
+                    interval="1d",
+                    progress=False,
+                    auto_adjust=True,
+                )
+                if df.empty:
+                    continue
+                if hasattr(df.index, "tz") and df.index.tz is not None:
+                    df.index = df.index.tz_localize(None)
+                df = df[["Open", "High", "Low", "Close", "Volume"]].dropna().tail(days)
+                return [
+                    {
+                        "timestamp": str(idx.date()) + "T09:00:00",
+                        "open":   round(float(row["Open"]),  2),
+                        "high":   round(float(row["High"]),  2),
+                        "low":    round(float(row["Low"]),   2),
+                        "close":  round(float(row["Close"]), 2),
+                        "volume": int(row["Volume"]),
+                    }
+                    for idx, row in df.iterrows()
+                ]
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    return []
 
 
-def _fetch_us_candles(ticker: str, days: int) -> list[dict]:
+def _fetch_us_candles(ticker: str, days: int, daily: bool = False) -> list[dict]:
     import yfinance as yf
 
+    interval = "1d" if daily else "1m"
     stock = yf.Ticker(ticker)
-    df = stock.history(period=f"{days}d", interval="1m")
+    df = stock.history(period=f"{days}d", interval=interval)
     if df.empty:
         return []
     if hasattr(df.index, "tz") and df.index.tz is not None:
@@ -189,7 +226,7 @@ def _fetch_us_candles(ticker: str, days: int) -> list[dict]:
 @router.get("/{ticker}/candles", response_model=list[CandlePoint])
 async def get_candles(
     ticker: str,
-    days: int = Query(1, ge=1, le=5),
+    days: int = Query(1, ge=1, le=90),
 ):
     clean = ticker.upper().replace("KR:", "")
     is_kr = ticker.upper().startswith("KR:") or clean.isdigit()
@@ -201,10 +238,11 @@ async def get_candles(
                 # 1일: KIS REST API 분봉
                 data = await loop.run_in_executor(None, _fetch_kr_minute_candles, clean)
             else:
-                # 3D/5D: pykrx 일봉
+                # 일봉: pykrx → yfinance fallback
                 data = await loop.run_in_executor(None, _fetch_kr_daily_candles, clean, days)
         else:
-            data = await loop.run_in_executor(None, _fetch_us_candles, clean, days)
+            daily = days > 1
+            data = await loop.run_in_executor(None, _fetch_us_candles, clean, days, daily)
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
