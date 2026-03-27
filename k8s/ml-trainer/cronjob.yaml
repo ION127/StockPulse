@@ -118,7 +118,7 @@ spec:
           containers:
             - name: ml-trainer
               # CI/CD 파이프라인에서 SHORT_SHA로 자동 업데이트됨
-              image: 10.0.2.105/stock/ml-trainer:3bcedc8
+              image: 10.0.2.105/stock/ml-trainer:26f5ebd
               imagePullPolicy: Always
 
               env:
@@ -253,7 +253,7 @@ spec:
 
           containers:
             - name: ml-trainer
-              image: 10.0.2.105/stock/ml-trainer:3bcedc8
+              image: 10.0.2.105/stock/ml-trainer:26f5ebd
               imagePullPolicy: Always
 
               env:
@@ -384,7 +384,7 @@ spec:
 
           containers:
             - name: ml-trainer
-              image: 10.0.2.105/stock/ml-trainer:3bcedc8
+              image: 10.0.2.105/stock/ml-trainer:26f5ebd
               imagePullPolicy: Always
 
               env:
