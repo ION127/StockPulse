@@ -232,6 +232,72 @@ def get_fear_greed() -> Optional[float]:
         return None
 
 
+def get_sector_etfs(days_back: int = 90) -> pd.DataFrame:
+    """
+    미국 섹터 ETF 시계열 (한국 섹터 주식의 글로벌 벤치마크)
+
+    섹터 ETF → 해당 섹터 한국 주식의 방향성 선행 지표로 사용
+    예: SMH(반도체 ETF) 급등 → 삼성전자/SK하이닉스 상승 가능성
+
+    Returns columns (각 ETF의 종가 및 5일/20일 수익률):
+        smh, smh_ret5, smh_ret20,       # 반도체 (VanEck Semiconductor)
+        xlk, xlk_ret5, xlk_ret20,       # 기술 (Technology Select Sector)
+        xlf, xlf_ret5, xlf_ret20,       # 금융 (Financial Select Sector)
+        xle, xle_ret5, xle_ret20,       # 에너지 (Energy Select Sector)
+        xlv, xlv_ret5, xlv_ret20,       # 헬스케어 (Health Care Select Sector)
+        lit, lit_ret5, lit_ret20,       # 배터리/전기차 (Global X Lithium & Battery Tech)
+        ita, ita_ret5, ita_ret20,       # 방산 (iShares U.S. Aerospace & Defense)
+        xlb, xlb_ret5, xlb_ret20,       # 소재 (Materials Select Sector)
+    """
+    try:
+        import yfinance as yf
+
+        end = datetime.now()
+        start = end - timedelta(days=days_back + 30)  # 20일 수익률 계산 여유분
+
+        sector_etfs = {
+            "SMH": "smh",   # 반도체
+            "XLK": "xlk",   # 기술
+            "XLF": "xlf",   # 금융
+            "XLE": "xle",   # 에너지
+            "XLV": "xlv",   # 헬스케어
+            "LIT": "lit",   # 배터리/전기차
+            "ITA": "ita",   # 방산
+            "XLB": "xlb",   # 소재
+        }
+
+        frames: dict[str, pd.Series] = {}
+        for symbol, name in sector_etfs.items():
+            try:
+                data = yf.download(symbol, start=start, end=end, progress=False, auto_adjust=True)
+                if not data.empty:
+                    close = data["Close"]
+                    if hasattr(close, "squeeze"):
+                        close = close.squeeze()
+                    frames[name] = close
+            except Exception as e:
+                logger.debug(f"[Macro] 섹터ETF {symbol} 수집 실패: {e}")
+
+        if not frames:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(frames)
+        df.index = pd.to_datetime(df.index).tz_localize(None)
+        df.index.name = "date"
+
+        # 5일/20일 수익률 파생 지표
+        for name in list(frames.keys()):
+            if name in df.columns:
+                df[f"{name}_ret5"]  = df[name].pct_change(5)
+                df[f"{name}_ret20"] = df[name].pct_change(20)
+
+        return df.ffill().tail(days_back)
+
+    except Exception as e:
+        logger.warning(f"[Macro] 섹터 ETF 수집 실패: {e}")
+        return pd.DataFrame()
+
+
 def get_us_economic_calendar() -> dict:
     """
     주요 미국 경제 이벤트 여부 (이번 주 FOMC 여부 등)

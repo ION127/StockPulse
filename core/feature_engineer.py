@@ -28,6 +28,7 @@ from core.collectors.krx_collector import (
 from core.collectors.macro_collector import (
     get_market_indices, get_fear_greed, get_us_economic_calendar,
     get_bok_base_rate_series, get_bok_investor_deposit,
+    get_sector_etfs,
 )
 from core.collectors.dart_collector import (
     get_financial_ratios_with_lag, get_disclosure_events,
@@ -39,6 +40,45 @@ logger = logging.getLogger(__name__)
 
 # Look-ahead bias 방지: 재무 데이터 최소 lag (일)
 _FINANCIAL_LAG_DAYS = 60
+
+# ── 종목 → 섹터 ETF 매핑 (상대강도 피처용) ────────────────────────────────
+# 각 한국 종목이 어느 미국 섹터 ETF와 동조화되는지 매핑
+_TICKER_SECTOR_ETF = {
+    # 반도체
+    "KR:005930": "smh",   # 삼성전자
+    "KR:000660": "smh",   # SK하이닉스
+    "KR:042700": "smh",   # 한미반도체
+    # 기술/플랫폼
+    "KR:035420": "xlk",   # NAVER
+    "KR:035720": "xlk",   # 카카오
+    "KR:259960": "xlk",   # 크래프톤
+    # 금융
+    "KR:105560": "xlf",   # KB금융
+    "KR:055550": "xlf",   # 신한지주
+    "KR:086790": "xlf",   # 하나금융지주
+    # 에너지
+    "KR:010950": "xle",   # S-Oil
+    "KR:096770": "xle",   # SK이노베이션
+    "KR:267250": "xle",   # HD현대중공업
+    # 헬스케어/바이오
+    "KR:207940": "xlv",   # 삼성바이오로직스
+    "KR:068270": "xlv",   # 셀트리온
+    "KR:326030": "xlv",   # SK바이오팜
+    # 전기차/배터리
+    "KR:005380": "lit",   # 현대차
+    "KR:000270": "lit",   # 기아
+    "KR:373220": "lit",   # LG에너지솔루션
+    "KR:006400": "lit",   # 삼성SDI
+    "KR:051910": "lit",   # LG화학
+    # 방산
+    "KR:047810": "ita",   # 한국항공우주
+    "KR:012450": "ita",   # 한화에어로스페이스
+    # 소재/철강
+    "KR:005490": "xlb",   # POSCO홀딩스
+    # 통신 (XLK로 매핑 — 통신 전용 ETF보다 기술과 상관성 높음)
+    "KR:017670": "xlk",   # SK텔레콤
+    "KR:030200": "xlk",   # KT
+}
 
 
 # ── 기술적 지표 계산 ───────────────────────────────────────────────────────
@@ -279,6 +319,21 @@ def build_feature_matrix(
         deposit_df.index = pd.to_datetime(deposit_df.index).normalize()
         features = features.join(deposit_df, how="left")
 
+    # ── 6-D. 섹터 ETF 피처 + 상대강도 ────────────────────────────────────
+    # 미국 섹터 ETF(SMH/XLK/XLF 등)는 한국 동일 섹터 주식의 방향성 선행 지표
+    # 상대강도 = 종목 수익률 - 해당 섹터 ETF 수익률 (초과/부진 여부)
+    sector_etf_df = get_sector_etfs(days_back=days_back + 30)
+    if not sector_etf_df.empty:
+        sector_etf_df.index = pd.to_datetime(sector_etf_df.index).normalize()
+        features = features.join(sector_etf_df, how="left")
+
+        # 종목의 해당 섹터 ETF 대비 상대강도 계산
+        etf_key = _TICKER_SECTOR_ETF.get(ticker)
+        if etf_key and f"{etf_key}_ret5" in features.columns and "ret_5d" in features.columns:
+            features["rel_strength_5d"] = features["ret_5d"] - features[f"{etf_key}_ret5"]
+        if etf_key and f"{etf_key}_ret20" in features.columns and "ret_20d" in features.columns:
+            features["rel_strength_20d"] = features["ret_20d"] - features[f"{etf_key}_ret20"]
+
     cal = get_us_economic_calendar()
     features["is_fomc_month"]  = int(cal.get("is_fomc_month", False))
     features["is_quarter_end"] = int(cal.get("is_quarter_end", False))
@@ -323,6 +378,8 @@ def build_feature_matrix(
             "program", "vix", "usd_krw", "oil", "kospi", "nasdaq",
             "yield", "dxy", "gold", "fear_greed",
             "lending", "vkospi", "bok_", "deposit",
+            "smh", "xlk", "xlf", "xle", "xlv", "lit", "ita", "xlb",
+            "rel_strength",
         ]
     )]
     if ffill_cols:

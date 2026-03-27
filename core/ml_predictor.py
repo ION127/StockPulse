@@ -65,6 +65,17 @@ FEATURE_GROUPS = {
         "bok_base_rate", "bok_rate_chg",
         # 투자자예탁금 (시장 유동성 선행 1~2주)
         "investor_deposit", "deposit_chg5", "deposit_chg20",
+        # 섹터 ETF (미국 → 한국 섹터 선행)
+        "smh", "smh_ret5", "smh_ret20",
+        "xlk", "xlk_ret5", "xlk_ret20",
+        "xlf", "xlf_ret5", "xlf_ret20",
+        "xle", "xle_ret5", "xle_ret20",
+        "xlv", "xlv_ret5", "xlv_ret20",
+        "lit", "lit_ret5", "lit_ret20",
+        "ita", "ita_ret5", "ita_ret20",
+        "xlb", "xlb_ret5", "xlb_ret20",
+        # 종목 vs 섹터 ETF 상대강도
+        "rel_strength_5d", "rel_strength_20d",
     ],
     "regime": [
         "regime", "regime_duration", "regime_is_bull",
@@ -262,13 +273,21 @@ def train(
         "verbose": 0,
     }
 
-    # ── TimeSeriesSplit 교차 검증 ─────────────────────────────────────────
+    # ── Purged Walk-Forward CV ────────────────────────────────────────────
+    # gap=5: 훈련 끝에서 5일을 제거해 자기상관 누수(autocorrelation leakage) 방지
+    # 주가 수익률은 5일 내 자기상관이 크므로 gap 없이 분할하면 검증 점수가 과대평가됨
+    CV_GAP = 5
     tscv = TimeSeriesSplit(n_splits=5)
     acc_scores, auc_scores = [], []
 
     for tr_idx, val_idx in tscv.split(X):
-        X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
-        y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
+        # Purge: 훈련 set 마지막 CV_GAP 행 제거
+        purged_tr_idx = tr_idx[:-CV_GAP] if len(tr_idx) > CV_GAP else tr_idx
+        X_tr, X_val = X.iloc[purged_tr_idx], X.iloc[val_idx]
+        y_tr, y_val = y.iloc[purged_tr_idx], y.iloc[val_idx]
+
+        if len(X_tr) < 30:
+            continue
 
         # LGB
         m_lgb = lgb.LGBMClassifier(**lgb_params, n_estimators=300)
@@ -300,6 +319,8 @@ def train(
         except Exception:
             pass
 
+    if not acc_scores:
+        raise ValueError(f"[ML] {ticker} 유효한 CV fold 없음 (데이터 부족 또는 gap 과다)")
     cv_acc = float(np.mean(acc_scores))
     cv_auc = float(np.mean(auc_scores)) if auc_scores else 0.0
     logger.info(f"[ML] {ticker} CV → Acc={cv_acc:.4f} AUC={cv_auc:.4f} (±{np.std(acc_scores):.4f})")
