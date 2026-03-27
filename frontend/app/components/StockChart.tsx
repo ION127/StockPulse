@@ -15,17 +15,19 @@ type ChartType = 'line' | 'candle'
 type Timeframe  = 'minute' | 'daily'
 
 interface ChartPoint {
-  timestamp:  string
-  fullTs:     string
-  close:      number
-  open:       number
-  high:       number
-  low:        number
-  shadow:     [number, number]   // [low, high] — recharts range bar
-  isUp:       boolean
-  isAnomaly:  boolean
-  direction?: string
-  return_pct?: number
+  timestamp:       string
+  fullTs:          string
+  close:           number
+  open:            number
+  high:            number
+  low:             number
+  shadow:          [number, number]   // [low, high] — recharts range bar
+  isUp:            boolean
+  isAnomaly:       boolean
+  direction?:      string
+  return_pct?:     number
+  post_return_pct?: number   // 감지 시점 이후 현재까지 변화율
+  held?:           boolean   // 급등/급락 방향이 현재까지 유지되는지
 }
 
 // ── 포맷 헬퍼 ────────────────────────────────────────────────────────────
@@ -51,11 +53,23 @@ function matchAnomaly(anomaly: Anomaly, candleTs: string, isMinute: boolean): bo
     const norm = (s: string) => s.slice(0, 16).replace('T', ' ')
     return norm(bt) === norm(candleTs)
   } else {
-    // 일봉: 날짜만 비교 (bar_timestamp 없으면 anomaly_date 사용)
     const aDate = (anomaly.bar_timestamp ?? anomaly.anomaly_date ?? '').slice(0, 10)
     const cDate = candleTs.slice(0, 10)
     return aDate !== '' && aDate === cDate
   }
+}
+
+/**
+ * 이상값 마커 색상 결정
+ * - 급등 + 상승 유지 → 빨강   (#ef4444)
+ * - 급등 + 상승 소멸 → 주황   (#f97316)  ← 올랐다가 다시 하락
+ * - 급락 + 하락 유지 → 파랑   (#3b82f6)
+ * - 급락 + 하락 소멸 → 청록   (#06b6d4)  ← 내렸다가 반등
+ * held = undefined (최신 캔들) 이면 방향 색상만 유지
+ */
+function anomalyColor(direction: string | undefined, held: boolean | undefined): string {
+  if (direction === '급등') return held === false ? '#f97316' : '#ef4444'
+  return held === false ? '#06b6d4' : '#3b82f6'
 }
 
 function downsample(data: ChartPoint[], maxPoints = 600): ChartPoint[] {
@@ -69,26 +83,24 @@ function downsample(data: ChartPoint[], maxPoints = 600): ChartPoint[] {
 function AnomalyDot(props: any) {
   const { cx, cy, payload } = props
   if (!payload?.isAnomaly) return null
-  const isUp = payload.direction === '급등'
+  const color = anomalyColor(payload.direction, payload.held)
   return (
     <circle
       key={`anomaly-${payload.fullTs}`}
       cx={cx} cy={cy} r={5}
-      fill={isUp ? '#ef4444' : '#3b82f6'}
+      fill={color}
       stroke="#111827" strokeWidth={1.5}
     />
   )
 }
 
 // ── 봉차트: 단일 캔들스틱 shape ──────────────────────────────────────────
-// Bar의 dataKey="shadow"([low,high])가 y=high픽셀, y+height=low픽셀을 의미
-// open/close 위치를 그 범위 안에서 비례 계산하여 몸통을 그림
 
 function CandlestickShape(props: any) {
   const { x, y, width, height, payload } = props
   if (!payload || height <= 0) return null
 
-  const { open, close, high, low, isAnomaly, direction } = payload
+  const { open, close, high, low, isAnomaly, direction, held } = payload
   if (open == null || close == null || high == null || low == null) return null
 
   const range = high - low
@@ -96,7 +108,6 @@ function CandlestickShape(props: any) {
   const color = isUp ? '#10b981' : '#ef4444'
   const cx    = x + width / 2
 
-  // 몸통 픽셀 좌표 (high가 y=0에 해당)
   let bodyTop: number
   let bodyH:   number
 
@@ -114,7 +125,7 @@ function CandlestickShape(props: any) {
 
   return (
     <g>
-      {/* 심지 (고저선) */}
+      {/* 심지 */}
       <line x1={cx} y1={y} x2={cx} y2={y + height} stroke={color} strokeWidth={1} />
       {/* 몸통 */}
       <rect x={cx - bw / 2} y={bodyTop} width={bw} height={bodyH} fill={color} />
@@ -124,13 +135,27 @@ function CandlestickShape(props: any) {
           cx={cx}
           cy={bodyTop - 6}
           r={4}
-          fill={direction === '급등' ? '#ef4444' : '#3b82f6'}
+          fill={anomalyColor(direction, held)}
           stroke="#111827"
           strokeWidth={1.5}
         />
       )}
     </g>
   )
+}
+
+// ── 툴팁 이상값 문자열 ─────────────────────────────────────────────────────
+
+function fmtAnomalyLine(p: ChartPoint): string {
+  const detSign = (p.return_pct ?? 0) >= 0 ? '+' : ''
+  let s = `[이상값] ${p.direction} 감지: ${detSign}${p.return_pct?.toFixed(2) ?? '?'}%`
+
+  if (p.post_return_pct != null) {
+    const postSign = p.post_return_pct >= 0 ? '+' : ''
+    const outcome  = p.held ? '방향 유지' : '방향 소멸'
+    s += `  /  감지 후: ${postSign}${p.post_return_pct.toFixed(2)}% (${outcome})`
+  }
+  return s
 }
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────
@@ -185,26 +210,45 @@ export default function StockChart() {
   }
 
   const rawCandles: Candle[] = candles[`${ticker}_${period}d`] ?? []
-  const isMinute = timeframe === 'minute'
+  const isMinute  = timeframe === 'minute'
+  const lastClose = rawCandles[rawCandles.length - 1]?.close ?? 0
 
   const chartData: ChartPoint[] = downsample(
     rawCandles.map((c) => {
-      const anomaly = anomalies.find((a) => matchAnomaly(a, c.timestamp, isMinute))
+      const anomaly    = anomalies.find((a) => matchAnomaly(a, c.timestamp, isMinute))
       const open  = c.open  ?? c.close
       const high  = c.high  ?? c.close
       const low   = c.low   ?? c.close
+
+      // 감지 이후 현재까지 변화율 (최신 캔들은 판단 보류)
+      const isLastCandle = c.timestamp === rawCandles[rawCandles.length - 1]?.timestamp
+      const post_return_pct =
+        anomaly && !isLastCandle && c.close && lastClose
+          ? (lastClose - c.close) / c.close * 100
+          : undefined
+
+      // 급등 → 상승 유지 여부 / 급락 → 하락 유지 여부
+      const held =
+        post_return_pct !== undefined
+          ? anomaly!.direction === '급등'
+            ? post_return_pct >= 0
+            : post_return_pct <= 0
+          : undefined
+
       return {
-        timestamp:  fmtTs(c.timestamp, isMinute),
-        fullTs:     c.timestamp,
-        close:      c.close,
+        timestamp:       fmtTs(c.timestamp, isMinute),
+        fullTs:          c.timestamp,
+        close:           c.close,
         open,
         high,
         low,
-        shadow:     [low, high] as [number, number],
-        isUp:       c.close >= open,
-        isAnomaly:  !!anomaly,
-        direction:  anomaly?.direction,
-        return_pct: anomaly?.return_pct,
+        shadow:          [low, high] as [number, number],
+        isUp:            c.close >= open,
+        isAnomaly:       !!anomaly,
+        direction:       anomaly?.direction,
+        return_pct:      anomaly?.return_pct,
+        post_return_pct,
+        held,
       }
     })
   )
@@ -311,19 +355,17 @@ export default function StockChart() {
               labelStyle={{ color: '#9ca3af' }}
               itemStyle={{ color: '#e5e7eb' }}
               formatter={(v: any, name: string, item: any) => {
-                const p = item?.payload
+                const p: ChartPoint = item?.payload
                 if (name === 'close') {
                   if (p?.isAnomaly) {
-                    const sign = (p.return_pct ?? 0) > 0 ? '+' : ''
-                    return [`${Number(v).toLocaleString()} (${p.direction} ${sign}${p.return_pct?.toFixed(2)}%)`, '종가']
+                    return [`${Number(v).toLocaleString()}  ${fmtAnomalyLine(p)}`, '종가']
                   }
                   return [Number(v).toLocaleString(), '종가']
                 }
                 if (name === 'shadow') {
-                  return [
-                    `고: ${p?.high?.toLocaleString()}  저: ${p?.low?.toLocaleString()}  시: ${p?.open?.toLocaleString()}  종: ${p?.close?.toLocaleString()}`,
-                    '',
-                  ]
+                  const ohlc = `고: ${p?.high?.toLocaleString()}  저: ${p?.low?.toLocaleString()}  시: ${p?.open?.toLocaleString()}  종: ${p?.close?.toLocaleString()}`
+                  const anomalyNote = p?.isAnomaly ? `  |  ${fmtAnomalyLine(p)}` : ''
+                  return [`${ohlc}${anomalyNote}`, '']
                 }
                 return [v, name]
               }}
@@ -354,19 +396,23 @@ export default function StockChart() {
       )}
 
       {/* 범례 */}
-      <div className="flex gap-4 mt-2 text-[10px] text-gray-500">
+      <div className="flex gap-3 mt-2 text-[10px] text-gray-500 flex-wrap">
         {chartType === 'line' ? (
           <>
             <span><span className="inline-block w-2 h-2 rounded-full bg-indigo-500 mr-1" />종가</span>
-            <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1" />급등 이상값</span>
-            <span><span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />급락 이상값</span>
+            <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1" />급등 유지</span>
+            <span><span className="inline-block w-2 h-2 rounded-full bg-orange-500 mr-1" />급등 소멸</span>
+            <span><span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />급락 유지</span>
+            <span><span className="inline-block w-2 h-2 rounded-full bg-cyan-500 mr-1" />급락 소멸</span>
           </>
         ) : (
           <>
             <span><span className="inline-block w-2 h-2 rounded bg-emerald-500 mr-1" />상승봉</span>
             <span><span className="inline-block w-2 h-2 rounded bg-red-500 mr-1" />하락봉</span>
-            <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1" />급등</span>
-            <span><span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />급락</span>
+            <span><span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-1" />급등 유지</span>
+            <span><span className="inline-block w-2 h-2 rounded-full bg-orange-500 mr-1" />급등 소멸</span>
+            <span><span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />급락 유지</span>
+            <span><span className="inline-block w-2 h-2 rounded-full bg-cyan-500 mr-1" />급락 소멸</span>
           </>
         )}
       </div>
