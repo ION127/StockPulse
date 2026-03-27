@@ -40,8 +40,22 @@ function fmtTs(ts: string, isMinute: boolean): string {
   return isMinute ? `${hh}:${min}` : `${mm}/${dd}`
 }
 
-function sameMinute(a: string, b: string): boolean {
-  return a.slice(0, 16).replace('T', ' ') === b.slice(0, 16).replace('T', ' ')
+/** 이상값 ↔ 캔들 매칭
+ *  분봉: bar_timestamp 분 단위 비교
+ *  일봉: 날짜(YYYY-MM-DD) 비교 — 일봉 캔들은 항상 09:00 고정이므로 분 비교 불가
+ */
+function matchAnomaly(anomaly: Anomaly, candleTs: string, isMinute: boolean): boolean {
+  if (isMinute) {
+    const bt = anomaly.bar_timestamp
+    if (!bt) return false
+    const norm = (s: string) => s.slice(0, 16).replace('T', ' ')
+    return norm(bt) === norm(candleTs)
+  } else {
+    // 일봉: 날짜만 비교 (bar_timestamp 없으면 anomaly_date 사용)
+    const aDate = (anomaly.bar_timestamp ?? anomaly.anomaly_date ?? '').slice(0, 10)
+    const cDate = candleTs.slice(0, 10)
+    return aDate !== '' && aDate === cDate
+  }
 }
 
 function downsample(data: ChartPoint[], maxPoints = 600): ChartPoint[] {
@@ -152,7 +166,7 @@ export default function StockChart() {
       candles[cacheKey]
         ? Promise.resolve(candles[cacheKey])
         : api.getCandles(ticker, period),
-      api.getTickerHistory(ticker, 30).catch(() => []),
+      api.getTickerHistory(ticker, Math.max(30, period * 2)).catch(() => []),
     ])
       .then(([candleData, anomalyData]) => {
         setCandles(cacheKey, candleData)
@@ -175,7 +189,7 @@ export default function StockChart() {
 
   const chartData: ChartPoint[] = downsample(
     rawCandles.map((c) => {
-      const anomaly = anomalies.find((a) => sameMinute(a.bar_timestamp ?? '', c.timestamp))
+      const anomaly = anomalies.find((a) => matchAnomaly(a, c.timestamp, isMinute))
       const open  = c.open  ?? c.close
       const high  = c.high  ?? c.close
       const low   = c.low   ?? c.close
