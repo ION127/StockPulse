@@ -293,7 +293,9 @@ export default function StockChart() {
               tickFormatter={(v) => v.toLocaleString()}
             />
             <Tooltip
-              contentStyle={{ background: '#111827', border: '1px solid #374151', fontSize: 11 }}
+              contentStyle={{ background: '#111827', border: '1px solid #374151', fontSize: 11, color: '#e5e7eb' }}
+              labelStyle={{ color: '#9ca3af' }}
+              itemStyle={{ color: '#e5e7eb' }}
               formatter={(v: any, name: string, item: any) => {
                 const p = item?.payload
                 if (name === 'close') {
